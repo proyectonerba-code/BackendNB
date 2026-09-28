@@ -1,8 +1,0 @@
-{
-  "files.exclude": {
-    "**/_respaldo/**": true
-  },
-  "search.exclude": {
-    "**/_respaldo/**": true
-  }
-}

@@ -23,6 +23,8 @@ const CANDIDATES = [
 const FRONT_DIR = CANDIDATES.find((p) => { try { return fs.existsSync(p); } catch { return false; } }) || path.resolve(__dirname, '../NERBA Front');
 const FRONTEND_URL = String(process.env.FRONTEND_URL || '').trim().replace(/\/$/, '');
 const SEED_DEMO = process.env.SEED_DEMO !== '0';
+// SERVE_STATIC=0: solo API (deploy separado: frontend en Netlify). Local: 1.
+const SERVE_STATIC = process.env.SERVE_STATIC !== '0';
 const DATA_DIR = path.join(__dirname, 'data');
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -1133,7 +1135,10 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname.startsWith('/api/')) return sendJSON(res, 404, { error: 'Ruta API no encontrada' });
 
-  // ----- archivos estaticos del frontend -----
+  // ----- archivos estaticos del frontend (desactivable en deploy separado) -----
+  if (!SERVE_STATIC) {
+    if (!pathname.startsWith('/api/')) return sendJSON(res, 404, { error: 'Solo API. El frontend vive en otro servicio.' }, req);
+  }
   let rel = pathname === '/' ? '/index.html' : pathname;
   // Nunca exponer datos, respaldos, workspaces ni dotfiles aunque FRONT_DIR falle
   if (/^\/(_respaldo|data)(\/|$)/.test(rel)
