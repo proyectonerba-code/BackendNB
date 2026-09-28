@@ -1,0 +1,1236 @@
+<!DOCTYPE html><html class="h-full" lang="es" style=""><head>
+<script src="/js/tema-oscuro.js?v=3.8"></script>
+<link rel="stylesheet" href="/css/tema-oscuro-razor.css?v=3.0" data-razor-dark="1">
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>GRUPO NERBA HIDALGO</title><link rel="icon" type="image/svg+xml" href="/assets/nerba-isotipo.svg">
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect">
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#fff1f1',
+              100: '#ffe1e1',
+              500: '#ef2323',
+              600: '#d91b1b',
+              700: '#b91313',
+              900: '#750b0b',
+            }
+          },
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-900 flex flex-col antialiased">
+<!-- NAVBAR ADMINISTRADOR -->
+<header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+<!-- BRAND LOGO -->
+<div class="flex items-center space-x-3">
+<div class="w-10 h-10 flex items-center justify-center">
+<img alt="Grupo NERBA HIDALGO Logo" class="h-9 w-auto object-contain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAQMmPxweOcb8yXCKRnygzgN1X4hf1qDyGAwCzC25Sq441L1_cBcDS1m2yDg_mc9A2C2C-onOXcE7V_pNOGEKKJ8kyo8EP_PVk2qgdqCKzQ-2-i4FvvCYgpI3eMgWx_W16-0Qaw9GV_QjAsPqw7a48lUqYRiv_IrpKtdSg4JAt_3ctmTPXZTrBHKcoVRjwfh-6p1xojk2GrIQTFmSbvcO_p5FGre6uk2RrEhYGR-MrvYZYrYr8K_dz2V5wtUMQWEx7u3_A">
+</div>
+<div class="flex flex-col">
+<span class="text-xl font-extrabold tracking-tight text-slate-900 leading-none">Grupo NERBA HIDALGO</span>
+<span class="text-[10px] tracking-widest font-bold text-brand-600 uppercase">Seguridad Integral</span>
+</div>
+</div>
+<!-- NAVIGATION LINKS -->
+<nav class="hidden md:flex items-center space-x-1 lg:space-x-2">
+<!-- Cotizaciones Recibidas (ACTIVE) -->
+<a class="flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-bold bg-brand-50 text-brand-600 border border-brand-200/70 shadow-xs" href="#cotizaciones">
+<svg class="w-4 h-4 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span class="">Cotizaciones Recibidas</span>
+<span class="ml-1 px-1.5 py-0.5 rounded-full text-xs bg-brand-600 text-white font-bold">4</span>
+</a>
+<!-- Catálogo Gestión -->
+<a class="flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition" href="#">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<span class="">Catálogo</span>
+</a>
+<!-- Nosotros -->
+<a class="flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition" href="#usuarios"><svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg><span class="">Usuarios</span></a><a class="flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition" href="#bitacora"><svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"></path><rect height="4" rx="1" width="8" x="8" y="3"></rect><path d="M9 12h6"></path><path d="M9 16h6"></path></svg><span class="">Bitácora</span></a>
+<!-- Historial Global -->
+</nav>
+<!-- USER PROFILE & CONTROLS -->
+<div class="flex items-center space-x-3">
+<!-- BOTÓN ACCESIBILIDAD -->
+<div class="relative">
+</div>
+<!-- PROFILE BADGE -->
+<div class="flex items-center space-x-3 pl-2 border-l border-slate-200">
+<div class="relative">
+<img alt="Carlos Mendoza" class="w-10 h-10 rounded-full ring-2 ring-brand-600/30 object-cover" src="https://ui-avatars.com/api/?name=CM&background=b0000b&color=fff&bold=true">
+<span class="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-white"></span>
+</div>
+<div class="hidden xl:flex flex-col text-left"><span class="text-sm font-bold text-slate-900 leading-tight">Carlos Mendoza</span><span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-brand-600 text-white tracking-wider uppercase mt-0.5 shadow-2xs">SUPER ADMIN</span></div>
+<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M19 9l-7 7-7-7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+</div>
+</div>
+</div>
+</header>
+<!-- MAIN WORKSPACE -->
+<main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+<!-- PAGE HEADER -->
+<div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-200 pb-6">
+<div>
+<div class="flex items-center space-x-2 text-xs font-bold text-brand-600 uppercase tracking-widest mb-1"><span class="inline-block w-2 h-2 rounded-full bg-brand-600"></span><span class="">Bandeja Centralizada de Clientes</span><span class="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-brand-50 text-brand-700 border border-brand-200/70 uppercase tracking-wider">Super Admin • Control Total</span></div>
+<h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Cotizaciones Recibidas</h1>
+<p class="text-sm text-slate-500 mt-1 max-w-2xl">Control integral para Super Admin: gestiona, supervisa y audita todas las solicitudes recibidas del cotizador, responde formalmente con propuestas técnicas personalizadas, coordina inspecciones en campo y descarga expedientes oficiales con validez IEC.</p>
+</div>
+<!-- TOP ACTIONS -->
+<div class="flex items-center gap-3">
+<button class="inline-flex items-center px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-50 transition shadow-xs" onclick="exportarReporte()">
+<svg class="w-4 h-4 mr-2 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+          Exportar Resumen CSV
+        </button>
+<button class="inline-flex items-center px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold transition shadow-sm hover:shadow" onclick="actualizarLista()">
+<svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+          Sincronizar Solicitudes
+        </button>
+</div>
+</div>
+<!-- STATS COUNTERS (Sin montos monetarios) -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="admin-stats">
+</div>
+<!-- FILTERS AND SEARCH BAR -->
+<div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col gap-4">
+<div class="flex items-center gap-1.5 w-full overflow-x-auto pb-1">
+<span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Tipo:</span>
+<button data-tipo="all" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-900 text-white whitespace-nowrap shadow-xs">Todos los tipos</button>
+<button data-tipo="instalaciones" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition whitespace-nowrap">Instalaciones</button>
+<button data-tipo="productos" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition whitespace-nowrap">Electrónica y refacciones</button>
+</div>
+<div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+<div class="flex-1 flex flex-col sm:flex-row sm:items-center gap-3">
+<!-- Search Input -->
+<div class="relative w-full sm:w-80">
+<svg class="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+<input class="w-full pl-10 pr-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-600 focus:bg-white transition" id="buscador" onkeyup="filtrarTabla()" placeholder="Buscar por cliente, folio o equipo..." type="text">
+</div>
+<!-- Filter By Status -->
+<div class="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+<button class="px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-900 text-white whitespace-nowrap shadow-xs">Todos (28)</button>
+<button class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-100 text-amber-800 hover:bg-amber-200 transition whitespace-nowrap">Pendientes (4)</button>
+<button class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition whitespace-nowrap">Rechazadas (0)</button>
+<button class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition whitespace-nowrap">Aprobadas (5)</button>
+</div>
+</div>
+<!-- Date Range / Sort -->
+<div class="flex items-center space-x-2 text-xs font-medium text-slate-500">
+<span class="">Ordenar por:</span>
+<select class="text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-brand-600">
+<option>Más recientes primero</option>
+<option>Prioridad de atención</option>
+<option>Inmueble: Residencial / Comercial</option>
+</select>
+</div>
+</div>
+</div>
+<!-- TABLE OF INCOMING QUOTATIONS -->
+<div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+<div class="overflow-x-auto custom-scrollbar">
+<table class="w-full min-w-[900px] text-left border-collapse text-sm">
+<thead>
+<tr class="bg-slate-50/80 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[11px] font-bold">
+<th class="py-4 px-6">Folio / Estado / Fecha</th>
+<th class="py-4 px-6">Solicitante &amp; Contacto</th>
+<th class="py-4 px-6">Destino, Inmueble &amp; Ubicación</th>
+<th class="py-4 px-6">Fotos Adjuntas</th>
+<th class="py-4 px-6 min-w-[280px]">Especificación del Cliente</th>
+<th class="py-4 pl-4 pr-6 text-left whitespace-nowrap min-w-[170px]">Acciones Directas</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-slate-200 text-slate-700 text-xs">
+<!-- REGISTRO 1: COT-8849-2024 -->
+<tr class="hover:bg-slate-50/80 transition duration-150 bg-amber-50/15">
+<td class="py-4 px-6 align-top">
+<div class="flex items-center space-x-2">
+<span class="w-2.5 h-2.5 rounded-full bg-brand-600 animate-pulse"></span>
+<span class="font-mono font-bold text-slate-900 text-sm">COT-8849-2024</span>
+</div>
+<div class="text-xs text-slate-500 mt-1">24 Oct 2024 • 16:42 hrs</div>
+<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 mt-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1"></span>
+                  Pendiente Inspección
+                </span>
+<span class="block text-[10px] text-slate-400 mt-1">Modo Solo Lectura (Inmutable)</span>
+</td>
+<td class="py-4 px-6 align-top">
+<div class="font-bold text-slate-900 text-sm">Ing. Carlos Mendoza Rivas</div>
+<div class="text-slate-500 text-[11px] mt-0.5">Cliente Verificado</div>
+<div class="mt-1 space-y-0.5 text-slate-600 text-[11px]">
+<div class="flex items-center gap-1.5 text-emerald-700 font-semibold">
+<svg class="w-3.5 h-3.5 text-emerald-600" fill="currentColor" viewBox="0 0 24 24"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.299.045-.677.063-1.092-.069-.252-.08-.575-.187-.988-.365-1.739-.751-2.874-2.502-2.961-2.617-.087-.116-.708-.94-.708-1.793s.448-1.273.607-1.446c.159-.173.346-.217.462-.217l.332.006c.106.005.249-.04.39.299.144.347.491 1.2.534 1.288.043.088.072.19.014.305-.058.115-.087.19-.173.289l-.26.302c-.087.087-.179.182-.077.357.101.174.449.741.964 1.201.662.591 1.221.774 1.394.86.173.086.275.072.376-.043.101-.116.433-.505.549-.679.116-.173.231-.145.39-.087s1.011.477 1.184.564.289.13.332.203c.043.072.043.419-.101.824z"></path></svg>
+                    +51 987 654 321
+                  </div>
+<div class="text-slate-500 truncate">carlos.mendoza@empresa.com</div>
+<div class="text-slate-400 text-[10px]">Sec: +51 (01) 456-7890</div>
+</div>
+</td>
+<td class="py-4 px-6 align-top">
+<div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-red-50 text-brand-700 font-bold text-[11px] mb-1">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                  Casa / Residencia
+                </div>
+<div class="font-bold text-slate-800 text-xs">Av. Manuel Olguín 345, Dpto / Lote 4B</div>
+<div class="text-slate-600 text-[11px]">Santiago de Surco, Lima</div>
+<div class="text-[10px] text-slate-400 mt-1 bg-slate-50 p-1 rounded border border-slate-200/60 leading-tight">
+<span class="font-semibold text-slate-600">Ref:</span> A dos cuadras del CC El Polo, portón negro de rejas
+                </div>
+</td>
+<td class="py-4 px-6 align-top">
+<div class="flex items-center justify-between mb-1">
+<span class="text-[10px] font-bold text-slate-500 uppercase">3 Fotos</span>
+<span class="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1 py-0.2 rounded">Nítidas</span>
+</div>
+<div class="flex items-center gap-1.5">
+<div class="w-12 h-12 bg-slate-100 rounded border border-slate-200 overflow-hidden text-center flex flex-col items-center justify-center p-0.5 cursor-pointer hover:border-brand-600 transition shadow-2xs" onclick="verFotoPreview('Fachada y Portón Principal', 'Fachada_Porton.jpg')" title="Ver Fachada_Porton.jpg">
+<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span class="text-[8px] font-bold text-slate-600 truncate w-full leading-none mt-0.5">Fachada</span>
+</div>
+<div class="w-12 h-12 bg-slate-100 rounded border border-slate-200 overflow-hidden text-center flex flex-col items-center justify-center p-0.5 cursor-pointer hover:border-brand-600 transition shadow-2xs" onclick="verFotoPreview('Muro Posterior 28m', 'Muro_Perimetro.jpg')" title="Ver Muro_Perimetro.jpg">
+<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span class="text-[8px] font-bold text-slate-600 truncate w-full leading-none mt-0.5">Muro Post</span>
+</div>
+<div class="w-12 h-12 bg-slate-100 rounded border border-slate-200 overflow-hidden text-center flex flex-col items-center justify-center p-0.5 cursor-pointer hover:border-brand-600 transition shadow-2xs" onclick="verFotoPreview('Cochera y Accesos', 'Cochera_Patio.jpg')" title="Ver Cochera_Patio.jpg">
+<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span class="text-[8px] font-bold text-slate-600 truncate w-full leading-none mt-0.5">Cochera</span>
+</div>
+</div>
+</td>
+<td class="py-4 px-6 align-top">
+<div class="bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-[11px] leading-relaxed text-slate-700 max-w-sm">
+<span class="font-bold text-slate-900 block mb-1 text-[10px] uppercase text-brand-700">Texto exacto redactado:</span>
+                  Requiero un sistema integrado de seguridad para mi domicilio particular:<br>
+                  1. Instalación de 4 cámaras 4K con IA en accesos frontales y patio para monitoreo remoto.<br>
+                  2. Cerco eléctrico perimétrico de 6 líneas en el muro posterior (aprox 28 metros lineales) con alarma.<br>
+                  3. Automatización de portón levadizo con 3 controles remotos sincronizados.<br>
+<span class="text-slate-500 italic">Favor cotizar con cables ocultos y canaletas estéticas.</span>
+</div>
+</td>
+<td class="py-4 pl-4 pr-6 align-top text-left">
+<div class="flex flex-col gap-1.5 w-full max-w-[155px]">
+<button class="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white font-semibold text-[11px] shadow-xs transition whitespace-nowrap" onclick="abrirModalPdfOficial('COT-8849-2024', 'Ing. Carlos Mendoza Rivas', 'Casa / Residencia', 'Av. Manuel Olguín 345, Santiago de Surco', '+51 987 654 321', 'carlos.mendoza@empresa.com')">
+<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span class="">Descargar PDF</span>
+</button>
+<button class="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold text-[11px] border border-emerald-200 transition whitespace-nowrap" onclick="abrirModalRespuesta('Ing. Carlos Mendoza Rivas', 'COT-8849-2024', '+51 987 654 321', 'Requiero un sistema integrado de seguridad para mi domicilio: 4 cámaras 4K con IA, cerco eléctrico perimétrico 6 líneas (28m) y portón levadizo automatizado.', 'Casa / Residencia')">
+<svg class="w-3.5 h-3.5 text-emerald-600 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"></path></svg>
+<span class="">WhatsApp</span>
+</button>
+<button class="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] border border-slate-200 transition whitespace-nowrap" onclick="abrirModalRespuesta('Ing. Carlos Mendoza Rivas', 'COT-8849-2024', '+51 987 654 321', 'Requiero un sistema integrado de seguridad para mi domicilio: 4 cámaras 4K con IA, cerco eléctrico perimétrico 6 líneas (28m) y portón levadizo automatizado.', 'Casa / Residencia')">
+<svg class="w-3.5 h-3.5 text-slate-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span class="">Coordinar Visita</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- REGISTRO 2: COT-7621-2024 -->
+<tr class="hover:bg-slate-50/80 transition duration-150">
+<td class="py-4 px-6 align-top">
+<div class="flex items-center space-x-2">
+<span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+<span class="font-mono font-bold text-slate-900 text-sm">COT-7621-2024</span>
+</div>
+<div class="text-xs text-slate-500 mt-1">12 Sep 2024 • 11:15 hrs</div>
+<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 mt-1.5">
+<svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                  Evaluación Aprobada
+                </span>
+<span class="block text-[10px] text-slate-400 mt-1">Inspección Presencial OK</span>
+</td>
+<td class="py-4 px-6 align-top">
+<div class="font-bold text-slate-900 text-sm">Carlos Mendoza</div>
+<div class="text-slate-500 text-[11px] mt-0.5">Representante Comercial</div>
+<div class="mt-1 space-y-0.5 text-slate-600 text-[11px]">
+<div class="flex items-center gap-1.5 text-emerald-700 font-semibold">
+<svg class="w-3.5 h-3.5 text-emerald-600" fill="currentColor" viewBox="0 0 24 24"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.299.045-.677.063-1.092-.069-.252-.08-.575-.187-.988-.365-1.739-.751-2.874-2.502-2.961-2.617-.087-.116-.708-.94-.708-1.793s.448-1.273.607-1.446c.159-.173.346-.217.462-.217l.332.006c.106.005.249-.04.39.299.144.347.491 1.2.534 1.288.043.088.072.19.014.305-.058.115-.087.19-.173.289l-.26.302c-.087.087-.179.182-.077.357.101.174.449.741.964 1.201.662.591 1.221.774 1.394.86.173.086.275.072.376-.043.101-.116.433-.505.549-.679.116-.173.231-.145.39-.087s1.011.477 1.184.564.289.13.332.203c.043.072.043.419-.101.824z"></path></svg>
+                    +51 987 654 321
+                  </div>
+<div class="text-slate-500 truncate">carlos.mendoza@empresa.com</div>
+</div>
+</td>
+<td class="py-4 px-6 align-top">
+<div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-bold text-[11px] mb-1">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                  Local Comercial / Oficinas
+                </div>
+<div class="font-bold text-slate-800 text-xs">Av. Javier Prado Este 2840</div>
+<div class="text-slate-600 text-[11px]">San Borja, Lima</div>
+<div class="text-[10px] text-slate-400 mt-1 bg-slate-50 p-1 rounded border border-slate-200/60 leading-tight">
+<span class="font-semibold text-slate-600">Ref:</span> Frente al Centro de Convenciones
+                </div>
+</td>
+<td class="py-4 px-6 align-top">
+<div class="flex items-center justify-between mb-1">
+<span class="text-[10px] font-bold text-slate-500 uppercase">2 Fotos</span>
+<span class="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1 py-0.2 rounded">Revisión OK</span>
+</div>
+<div class="flex items-center gap-1.5">
+<div class="w-12 h-12 bg-slate-100 rounded border border-slate-200 overflow-hidden text-center flex flex-col items-center justify-center p-0.5 cursor-pointer hover:border-brand-600 transition shadow-2xs" onclick="verFotoPreview('Área de Recepción', 'Recepcion_Comercial.jpg')" title="Ver Recepción">
+<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span class="text-[8px] font-bold text-slate-600 truncate w-full leading-none mt-0.5">Recepción</span>
+</div>
+<div class="w-12 h-12 bg-slate-100 rounded border border-slate-200 overflow-hidden text-center flex flex-col items-center justify-center p-0.5 cursor-pointer hover:border-brand-600 transition shadow-2xs" onclick="verFotoPreview('Sala de Servidores y Racks', 'DataCenter_Rack.jpg')" title="Ver Sala Servidores">
+<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span class="text-[8px] font-bold text-slate-600 truncate w-full leading-none mt-0.5">Servidores</span>
+</div>
+</div>
+</td>
+<td class="py-4 px-6 align-top">
+<div class="bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-[11px] leading-relaxed text-slate-700 max-w-sm">
+<span class="font-bold text-slate-900 block mb-1 text-[10px] uppercase text-emerald-700">Requerimiento Técnico Implementado:</span>
+                  Sistema de alarma inalámbrica de alta frecuencia WiFi/4G sin falsos disparos, sensores de rotura de cristales en vitrinas frontales y enlace directo con central de monitoreo 24/7 de Grupo NERBA HIDALGO.
+                </div>
+</td>
+<td class="py-4 pl-4 pr-6 align-top text-left">
+<div class="flex flex-col gap-1.5 w-full max-w-[155px]">
+<button class="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[11px] shadow-xs transition whitespace-nowrap" onclick="abrirModalPdfOficial('COT-7621-2024', 'Carlos Mendoza', 'Local Comercial / Oficinas', 'Av. Javier Prado Este 2840, San Borja', '+51 987 654 321', 'carlos.mendoza@empresa.com')">
+<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span class="">Descargar PDF</span>
+</button>
+<button class="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold text-[11px] border border-emerald-200 transition whitespace-nowrap" onclick="abrirModalRespuesta('Carlos Mendoza', 'COT-7621-2024', '+51 987 654 321', 'Sistema de alarma inalámbrica de alta frecuencia WiFi/4G sin falsos disparos, sensores de rotura de cristales en vitrinas frontales y enlace con central 24/7.', 'Local Comercial / Oficinas')">
+<svg class="w-3.5 h-3.5 text-emerald-600 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"></path></svg>
+<span class="">WhatsApp</span>
+</button>
+<button class="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] border border-slate-200 transition whitespace-nowrap" onclick="abrirModalRespuesta('Carlos Mendoza', 'COT-7621-2024', '+51 987 654 321', 'Sistema de alarma inalámbrica de alta frecuencia WiFi/4G sin falsos disparos, sensores de rotura de cristales en vitrinas frontales y enlace con central 24/7.', 'Local Comercial / Oficinas')">
+<svg class="w-3.5 h-3.5 text-slate-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span class="">Dar Respuesta</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- REGISTRO 3: COT-9842-2025 -->
+<tr class="hover:bg-slate-50/80 transition duration-150">
+<td class="py-4 px-6 align-top">
+<div class="flex items-center space-x-2">
+<span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+<span class="font-mono font-bold text-slate-900 text-sm">COT-9842-2025</span>
+</div>
+<div class="text-xs text-slate-500 mt-1">Hoy • 10:45 AM</div>
+<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 mt-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1"></span>
+                  Pendiente Revisión
+                </span>
+</td>
+<td class="py-4 px-6 align-top">
+<div class="font-bold text-slate-900 text-sm">Ing. Roberto Carranza</div>
+<div class="text-slate-500 text-[11px] mt-0.5">Inversiones Carranza S.A.C.</div>
+<div class="mt-1 space-y-0.5 text-slate-600 text-[11px]">
+<div class="flex items-center gap-1.5 text-emerald-700 font-semibold">
+<svg class="w-3.5 h-3.5 text-emerald-600" fill="currentColor" viewBox="0 0 24 24"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.299.045-.677.063-1.092-.069-.252-.08-.575-.187-.988-.365-1.739-.751-2.874-2.502-2.961-2.617-.087-.116-.708-.94-.708-1.793s.448-1.273.607-1.446c.159-.173.346-.217.462-.217l.332.006c.106.005.249-.04.39.299.144.347.491 1.2.534 1.288.043.088.072.19.014.305-.058.115-.087.19-.173.289l-.26.302c-.087.087-.179.182-.077.357.101.174.449.741.964 1.201.662.591 1.221.774 1.394.86.173.086.275.072.376-.043.101-.116.433-.505.549-.679.116-.173.231-.145.39-.087s1.011.477 1.184.564.289.13.332.203c.043.072.043.419-.101.824z"></path></svg>
+                    +51 984 211 902
+                  </div>
+<div class="text-slate-500 truncate">carranza@inversionescarranza.com</div>
+</div>
+</td>
+<td class="py-4 px-6 align-top">
+<div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-100 text-slate-800 font-bold text-[11px] mb-1">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                  Bodega / Industrial
+                </div>
+<div class="font-bold text-slate-800 text-xs">Av. Argentina 3040, Naves A y B</div>
+<div class="text-slate-600 text-[11px]">Callao Industrial</div>
+<div class="text-[10px] text-slate-400 mt-1 bg-slate-50 p-1 rounded border border-slate-200/60 leading-tight">
+<span class="font-semibold text-slate-600">Ref:</span> Portón corredizo rojo frente al almacén aduanero
+                </div>
+</td>
+<td class="py-4 px-6 align-top">
+<div class="flex items-center justify-between mb-1">
+<span class="text-[10px] font-bold text-slate-500 uppercase">2 Fotos</span>
+<span class="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1 py-0.2 rounded">2400 m²</span>
+</div>
+<div class="flex items-center gap-1.5">
+<div class="w-12 h-12 bg-slate-100 rounded border border-slate-200 overflow-hidden text-center flex flex-col items-center justify-center p-0.5 cursor-pointer hover:border-brand-600 transition shadow-2xs" onclick="verFotoPreview('Portón de Maniobras', 'Porton_Naves.jpg')" title="Ver Maniobras">
+<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span class="text-[8px] font-bold text-slate-600 truncate w-full leading-none mt-0.5">Patio Carga</span>
+</div>
+<div class="w-12 h-12 bg-slate-100 rounded border border-slate-200 overflow-hidden text-center flex flex-col items-center justify-center p-0.5 cursor-pointer hover:border-brand-600 transition shadow-2xs" onclick="verFotoPreview('Almacén Central Techado', 'Nave_Central.jpg')" title="Ver Almacén">
+<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span class="text-[8px] font-bold text-slate-600 truncate w-full leading-none mt-0.5">Nave Almacén</span>
+</div>
+</div>
+</td>
+<td class="py-4 px-6 align-top">
+<div class="bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-[11px] leading-relaxed text-slate-700 max-w-sm">
+<span class="font-bold text-slate-900 block mb-1 text-[10px] uppercase text-brand-700">Texto exacto redactado:</span>
+                  Instalación perimétrica completa para planta logística: 8 cámaras térmicas y domo PTZ 4K en accesos de carga, más cerco energizado de alta disuasión en todo el perímetro posterior de 120 metros lineales.
+                </div>
+</td>
+<td class="py-4 pl-4 pr-6 align-top text-left">
+<div class="flex flex-col gap-1.5 w-full max-w-[155px]">
+<button class="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white font-semibold text-[11px] shadow-xs transition whitespace-nowrap" onclick="abrirModalPdfOficial('COT-9842-2025', 'Ing. Roberto Carranza', 'Bodega / Industrial', 'Av. Argentina 3040, Callao', '+51 984 211 902', 'carranza@inversionescarranza.com')">
+<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span class="">Descargar PDF</span>
+</button>
+<button class="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold text-[11px] border border-emerald-200 transition whitespace-nowrap" onclick="abrirModalRespuesta('Ing. Roberto Carranza', 'COT-9842-2025', '+51 984 211 902', 'Instalación perimétrica completa para planta logística: 8 cámaras térmicas y domo PTZ 4K en accesos de carga, más cerco energizado 120m.', 'Bodega / Industrial')">
+<svg class="w-3.5 h-3.5 text-emerald-600 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"></path></svg>
+<span class="">WhatsApp</span>
+</button>
+<button class="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] border border-slate-200 transition whitespace-nowrap" onclick="abrirModalRespuesta('Ing. Roberto Carranza', 'COT-9842-2025', '+51 984 211 902', 'Instalación perimétrica completa para planta logística: 8 cámaras térmicas y domo PTZ 4K en accesos de carga, más cerco energizado 120m.', 'Bodega / Industrial')">
+<svg class="w-3.5 h-3.5 text-slate-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span class="">Agendar Inspección</span>
+</button>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+<div id="quote-pager-label" class="">Mostrando 0 cotizaciones recibidas</div>
+<div id="quote-pagination" class="flex items-center space-x-1.5"></div>
+</div>
+</div>
+</main>
+<!-- MODAL PRINCIPAL: RESPONDER COTIZACIÓN POR WHATSAPP (TOTALMENTE FUNCIONAL) -->
+<div class="fixed inset-0 z-[100] items-center justify-center bg-slate-950/70 backdrop-blur-xs p-4 overflow-y-auto hidden" id="modal-respuesta">
+<!-- Click backdrop listener to close -->
+<div class="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-6 animate-in fade-in zoom-in duration-150">
+<!-- MODAL HEADER -->
+<div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+<div class="flex items-center space-x-3">
+<div class="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0">
+<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"></path></svg>
+</div>
+<div>
+<h3 class="text-base font-extrabold tracking-tight">Responder Cotización por WhatsApp</h3>
+<p class="text-xs text-slate-400" id="modal-resp-subtitulo">Cotización: COT-9842-2025</p>
+</div>
+</div>
+<button class="text-slate-400 hover:text-white p-1 rounded-lg transition" onclick="cerrarModalRespuesta()" title="Cerrar ventana">
+<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</button>
+</div>
+<!-- MODAL BODY -->
+<div class="p-6 space-y-5 max-h-[75vh] overflow-y-auto custom-scrollbar">
+<!-- RESUMEN DATOS CLIENTE SOLICITANTE -->
+<div class="p-4 rounded-2xl bg-slate-50 border border-slate-200/90 space-y-2.5">
+<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+<div>
+<span class="text-[10px] font-bold tracking-wider text-slate-500 uppercase block">Cliente Solicitante</span>
+<h4 class="text-sm font-bold text-slate-900" id="modal-resp-cliente-nombre">Ing. Roberto Carranza</h4>
+</div>
+<div class="flex items-center gap-2">
+<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+<svg class="w-3.5 h-3.5 text-emerald-600" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"></path></svg>
+<span class="" id="modal-resp-cliente-telefono">+51 984 211 902</span>
+</span>
+<span class="inline-block text-[11px] font-semibold text-slate-700 bg-white px-2.5 py-1 rounded-lg border border-slate-200" id="modal-resp-cliente-inmueble">Bodega / Industrial</span>
+</div>
+</div>
+<div class="pt-2 border-t border-slate-200 text-xs leading-relaxed text-slate-700">
+<span class="font-bold text-slate-900 block mb-0.5 text-[10px] uppercase text-brand-700">Texto Exacto Redactado por el Cliente:</span>
+<div class="bg-white p-2.5 rounded-lg border border-slate-200 text-slate-600 text-[11px] italic" id="modal-resp-cliente-requerimiento">"Instalación perimétrica completa para planta logística: 8 cámaras térmicas y domo PTZ 4K en accesos de carga, más cerco energizado 120m."</div>
+</div>
+</div>
+<!-- SELECTOR DE PLANTILLAS RÁPIDAS -->
+<div>
+</div>
+<!-- TEXTAREA EDITABLE PARA MENSAJE WHATSAPP -->
+<div class="space-y-1.5">
+<label class="block text-xs font-bold text-slate-700 uppercase tracking-wider" for="modal-resp-textarea">
+            Mensaje Personalizado a Enviar
+          </label>
+<textarea class="w-full text-sm p-3.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-600 focus:outline-none text-slate-800 custom-scrollbar leading-relaxed font-sans shadow-2xs" id="modal-resp-textarea" rows="5"></textarea>
+<p class="text-[11px] text-slate-500">Puedes modificar libremente el texto antes de enviarlo por WhatsApp al cliente.</p>
+</div>
+</div>
+<!-- MODAL FOOTER -->
+<div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
+<div class="flex items-center gap-2 w-full sm:w-auto">
+<button class="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-100 transition" onclick="cerrarModalRespuesta()" type="button">
+            Cancelar
+          </button>
+<button class="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-700 font-bold text-xs hover:bg-slate-50 transition flex items-center justify-center gap-1.5 shadow-xs" onclick="abrirPdfDesdeModalRespuesta()" type="button">
+<svg class="w-3.5 h-3.5 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+            Ver / Descargar PDF
+          </button>
+</div>
+<button class="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold text-xs transition shadow-sm hover:shadow flex items-center justify-center gap-2" onclick="ejecutarEnvioWhatsAppModal()" type="button">
+<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"></path></svg>
+<span class="">Enviar por WhatsApp</span>
+</button>
+</div>
+</div>
+</div>
+<!-- MODAL VISUALIZADOR DEL EXPEDIENTE Y PDF OFICIAL EMITIDO -->
+<div class="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-xs p-4 items-center justify-center hidden" id="modal-pdf-oficial">
+<div class="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl overflow-hidden my-6 border border-slate-200">
+<!-- Top bar -->
+<div class="bg-slate-900 px-6 py-4 flex items-center justify-between text-white">
+<div class="flex items-center gap-3">
+<div class="w-9 h-9 rounded-lg bg-brand-600 flex items-center justify-center text-white font-extrabold text-xs">
+            PDF
+          </div>
+<div>
+<h3 class="text-sm font-bold text-white flex items-center gap-2">
+<span class="" id="modal-pdf-titulo-archivo">COT-8849-2024.pdf</span>
+<span class="text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded">Expediente Oficial</span>
+</h3>
+<p class="text-[11px] text-slate-400">Ficha técnica y cotización generada desde el Cotizador Online</p>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<button class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition" onclick="window.print()">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+            Imprimir
+          </button>
+<button class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow-xs" onclick="descargarPDF(currentFolio, currentCliente)">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+            Descargar PDF
+          </button>
+<button class="w-8 h-8 rounded-lg hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition ml-2" onclick="cerrarModalPdfOficial()">
+<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</button>
+</div>
+</div>
+<!-- Digital Sheet A4 Body -->
+<div class="p-6 sm:p-10 bg-slate-100 max-h-[75vh] overflow-y-auto custom-scrollbar flex justify-center">
+<div class="w-full max-w-2xl bg-white shadow-lg border border-slate-300 p-8 text-slate-800 text-xs font-sans relative">
+<!-- Encabezado membretado oficial -->
+<div class="flex justify-between items-start border-b-2 border-brand-600 pb-4 mb-6">
+<div class="flex items-center gap-3">
+<img alt="Grupo NERBA HIDALGO" class="h-12 w-auto object-contain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBD3adPlz_Qgw_CRzcbNcGYmfBwXHWSeU2HbaddloQTJB-71qlrTwBUqoFZscWYiL-5PdGWYkJCKiLryLkEqSKegtbgWDCU_NMiweBpYQMjWPeA2iKb9aUlivuGygET4wNW4hBNldgtmW0tmEVRP9HL0dGTnwlMHBlMzYCssCjcZgaEWmqy4IdY0YCm2hGLrl8ya7p0EAXKeaJJkWgGKHZGBeSEwCZ-o_goJRio6PrZmtb2F3JN0IzQQQHlAcH7C_JTK7Y">
+<div>
+<h2 class="text-base font-extrabold text-slate-900 leading-tight">Grupo NERBA HIDALGO</h2>
+<span class="text-[9px] font-bold text-brand-600 tracking-wider uppercase">Seguridad Integral &amp; Videovigilancia</span>
+<p class="text-[9px] text-slate-500 mt-0.5">RUC: 20608945123 • Central: +51 (1) 800-9988</p>
+</div>
+</div>
+<div class="text-right">
+<div class="bg-red-50 border border-red-200 px-3 py-1.5 rounded text-right">
+<span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">EXPEDIENTE OFICIAL</span>
+<span class="text-sm font-extrabold text-brand-600" id="modal-pdf-codigo-folio">COT-8849-2024</span>
+</div>
+<p class="text-[10px] text-slate-500 mt-1">Fecha: <strong class="text-slate-800" id="modal-pdf-fecha">24/10/2024</strong></p>
+</div>
+</div>
+<!-- Datos del solicitante -->
+<div class="mb-5">
+<h4 class="text-[11px] font-extrabold text-slate-900 uppercase tracking-wider bg-slate-100 px-2.5 py-1 mb-2 border-l-2 border-brand-600">
+              1. Información del Solicitante
+            </h4>
+<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
+<div><span class="text-slate-500">Nombre / Razón Social:</span> <strong class="text-slate-900 font-semibold" id="modal-pdf-nombre">Ing. Carlos Mendoza Rivas</strong></div>
+<div><span class="text-slate-500">Teléfono de Contacto:</span> <strong class="text-slate-900 font-semibold" id="modal-pdf-tel">+51 987 654 321</strong></div>
+<div><span class="text-slate-500">Correo de Notificación:</span> <strong class="text-slate-900 font-semibold" id="modal-pdf-correo">contacto@cliente.com</strong></div>
+<div><span class="text-slate-500">Estado de Cuenta:</span> <span class="text-emerald-700 font-bold">Cliente Verificado</span></div>
+</div>
+</div>
+<!-- Inmueble y ubicación -->
+<div class="mb-5">
+<h4 class="text-[11px] font-extrabold text-slate-900 uppercase tracking-wider bg-slate-100 px-2.5 py-1 mb-2 border-l-2 border-brand-600">
+              2. Inmueble y Ubicación Registrada
+            </h4>
+<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
+<div><span class="text-slate-500">Tipo de Inmueble:</span> <strong class="text-slate-900 font-semibold" id="modal-pdf-tipo">Casa / Residencia</strong></div>
+<div><span class="text-slate-500">Dirección Exacta:</span> <strong class="text-slate-900 font-semibold" id="modal-pdf-direccion">Dirección registrada en expediente</strong></div>
+<div class="col-span-2 mt-1"><span class="text-slate-500">Referencia de Acceso:</span> <strong class="text-slate-800 font-medium" id="modal-pdf-referencia">A dos cuadras del CC El Polo, portón negro de rejas</strong></div>
+</div>
+</div>
+<!-- Requerimiento redactado -->
+<div class="mb-5">
+<h4 class="text-[11px] font-extrabold text-slate-900 uppercase tracking-wider bg-slate-100 px-2.5 py-1 mb-2 border-l-2 border-brand-600">
+              3. Especificación Técnica Solicitada por el Cliente
+            </h4>
+<div class="p-3 bg-slate-50 border border-slate-200 rounded text-[11px] leading-relaxed text-slate-800" id="modal-pdf-requerimiento-cuerpo">
+              Requiero un sistema integrado de seguridad para mi domicilio particular:<br>
+              1. Instalación de 4 cámaras 4K con IA en los accesos frontales y patio para monitoreo remoto.<br>
+              2. Cerco eléctrico perimétrico de 6 líneas en el muro posterior (28 metros lineales) con alarma.<br>
+              3. Automatización de portón levadizo con 3 controles remotos sincronizados.
+            </div>
+</div>
+<!-- Fotos cargadas -->
+<div class="mb-5">
+<h4 class="text-[11px] font-extrabold text-slate-900 uppercase tracking-wider bg-slate-100 px-2.5 py-1 mb-2 border-l-2 border-brand-600">
+              4. Registro Fotográfico de Referencia para Ingeniería
+            </h4>
+<div class="grid grid-cols-3 gap-2 text-center text-[10px]">
+<div class="border border-slate-200 p-2 rounded bg-slate-50">
+<div class="h-16 bg-slate-200 rounded flex items-center justify-center text-slate-600 font-bold">Fachada_Porton.jpg</div>
+<span class="text-slate-600 mt-1 block">Frontis y Portón</span>
+</div>
+<div class="border border-slate-200 p-2 rounded bg-slate-50">
+<div class="h-16 bg-slate-200 rounded flex items-center justify-center text-slate-600 font-bold">Muro_Perimetro.jpg</div>
+<span class="text-slate-600 mt-1 block">Muro Posterior 28m</span>
+</div>
+<div class="border border-slate-200 p-2 rounded bg-slate-50">
+<div class="h-16 bg-slate-200 rounded flex items-center justify-center text-slate-600 font-bold">Cochera_Patio.jpg</div>
+<span class="text-slate-600 mt-1 block">Cochera y Patio</span>
+</div>
+</div>
+</div>
+<!-- Cláusula formal obligatoria de inspección presencial -->
+<div class="p-3 bg-red-50 border border-red-200 rounded text-[10px] text-slate-700 mb-5 leading-relaxed">
+<strong class="text-brand-700 font-bold block uppercase">Aviso Técnico Oficial de Evaluación Presencial:</strong>
+            El presente expediente constituye una estimación preliminar basada en las fotos y especificaciones cargadas. Es condición técnica indispensable la visita presencial de un especialista certificado de Grupo NERBA HIDALGO para validar mediciones y cableados.
+          </div>
+<!-- Firmas y sellos -->
+<div class="pt-4 border-t border-slate-200 flex justify-between items-end text-[9px] text-slate-500">
+<div>
+<p class="">Código de Auditoría: <strong>NERBA-HASH-SHA256-OK</strong></p>
+<span class="inline-block px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold rounded mt-1">DOCUMENTO INMUTABLE AUDITABLE</span>
+</div>
+<div class="text-center">
+<div class="w-32 border-b border-slate-400 mb-1"></div>
+<p class="font-bold text-slate-700">Ingeniería &amp; Proyectos</p>
+<p class="">Grupo NERBA HIDALGO</p>
+</div>
+</div>
+</div>
+</div>
+<div class="bg-slate-50 px-6 py-4 border-t border-slate-200 flex justify-end gap-3 text-xs">
+<button class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl transition" onclick="cerrarModalPdfOficial()">
+          Cerrar
+        </button>
+<button class="px-5 py-2 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl transition shadow-xs flex items-center gap-1.5" onclick="descargarPDF(currentFolio, currentCliente)">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+          Descargar PDF Oficial
+        </button>
+</div>
+</div>
+</div>
+<!-- MODAL ZOOM DE FOTOGRAFÍA ADJUNTA -->
+<div class="fixed inset-0 z-50 hidden overflow-y-auto bg-slate-950/85 backdrop-blur-xs p-4 flex items-center justify-center" id="modal-foto-preview">
+<div class="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden p-6 animate-in fade-in zoom-in duration-150">
+<div class="flex justify-between items-center pb-3 border-b border-slate-200 mb-4">
+<div>
+<h4 class="text-sm font-bold text-slate-900" id="preview-foto-titulo">Foto de Referencia</h4>
+<p class="text-xs text-slate-500" id="preview-foto-archivo">Archivo original subido por el solicitante</p>
+</div>
+<button class="w-7 h-7 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-800 transition" onclick="cerrarFotoPreview()">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</button>
+</div>
+<div class="aspect-video bg-slate-100 rounded-xl border border-slate-200 flex flex-col items-center justify-center p-6 text-center">
+<svg class="w-12 h-12 text-brand-600/60 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span class="text-sm font-bold text-slate-800" id="preview-foto-nombre">Fachada_Porton.jpg</span>
+<p class="text-xs text-slate-500 mt-1 max-w-xs">Resolución nítida procesada por el Cotizador Online para dimensionamiento de cableado y metros lineales.</p>
+</div>
+<div class="mt-4 flex justify-end">
+<button class="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition" onclick="cerrarFotoPreview()">
+          Cerrar Vista Previa
+        </button>
+</div>
+</div>
+</div>
+<!-- TOAST NOTIFICATION CONTAINER -->
+<div class="fixed bottom-6 right-6 z-[110] flex flex-col space-y-2 pointer-events-none" id="toast-container"></div>
+<!-- JAVASCRIPT LOGIC & INTERACTION -->
+<script>
+    // Variables de estado activas
+    let currentFolio = 'COT-8849-2024';
+    let currentCliente = 'Ing. Carlos Mendoza Rivas';
+    let currentTel = '+51 987 654 321';
+    let currentRequerimiento = '4 cámaras 4K IA + cerco eléctrico 6 líneas + motor levadizo';
+    let currentInmueble = 'Casa / Residencia';
+
+    // ABRIR MODAL DE RESPUESTA DIRECTA (GARANTIZADO 100%)
+    window.abrirModalRespuesta = function(cliente, folio, telefono, requerimiento, inmueble = 'Casa / Residencia') {
+      currentCliente = cliente || currentCliente;
+      currentFolio = folio || currentFolio;
+      currentTel = telefono || currentTel;
+      currentRequerimiento = requerimiento || currentRequerimiento;
+      currentInmueble = inmueble || currentInmueble;
+
+      // Actualizar UI del modal
+      document.getElementById('modal-resp-subtitulo').innerText = `Cotización: ${currentFolio}`;
+      document.getElementById('modal-resp-cliente-nombre').innerText = currentCliente;
+      document.getElementById('modal-resp-cliente-telefono').innerText = currentTel;
+      document.getElementById('modal-resp-cliente-inmueble').innerText = currentInmueble;
+      document.getElementById('modal-resp-cliente-requerimiento').innerText = `"${currentRequerimiento}"`;
+
+      // Cargar plantilla predeterminada cordial
+      aplicarPlantillaRapida('inspeccion');
+
+      // Mostrar modal
+      const modal = document.getElementById('modal-respuesta');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    };
+
+    // CERRAR MODAL DE RESPUESTA
+    window.cerrarModalRespuesta = function() {
+      const modal = document.getElementById('modal-respuesta');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    };
+
+    // PLANTILLAS RÁPIDAS
+    window.aplicarPlantillaRapida = function(tipo) {
+      const textarea = document.getElementById('modal-resp-textarea');
+      if (tipo === 'inspeccion') {
+        textarea.value = `Estimado(a) ${currentCliente}, le saludamos de Grupo NERBA HIDALGO - Seguridad Integral. Hemos revisado su solicitud ${currentFolio} para su inmueble (${currentInmueble}). Para validar técnicamente las canalizaciones y equipos requeridos, nos gustaría agendar una inspección presencial técnica sin costo de compromiso. ¿Qué día y horario le queda mejor para la visita?`;
+      } else if (tipo === 'recepcion') {
+        textarea.value = `Hola ${currentCliente}, hemos recibido conforme su requerimiento de cotización ${currentFolio} en Grupo NERBA HIDALGO. Nuestro equipo de ingeniería ya está preparando su informe técnico preliminar y en breve le enviaremos el desglose de equipamiento. Si desea realizar alguna adición o cambio, quedamos a su entera disposición.`;
+      } else if (tipo === 'aclaracion') {
+        textarea.value = `Estimado(a) ${currentCliente}, respecto a su solicitud ${currentFolio} en Grupo NERBA HIDALGO, queremos confirmarle algunos detalles técnicos específicos de su instalación: ¿Cuenta con canalizaciones previas o requiere tubería conduit adosada para exterior? Con este dato afinaremos al 100% su propuesta técnica.`;
+      }
+    };
+
+    // ENVIAR POR WHATSAPP DESDE EL MODAL
+    window.ejecutarEnvioWhatsAppModal = function() {
+      const texto = document.getElementById('modal-resp-textarea').value;
+      const numeroLimpio = currentTel.replace(/[^0-9]/g, '');
+      const mensajeCodificado = encodeURIComponent(texto);
+      
+      const whatsappUrl = `https://api.whatsapp.com/send?phone=${numeroLimpio}&text=${mensajeCodificado}`;
+      
+      window.open(whatsappUrl, '_blank');
+      mostrarToast(`Iniciando conversación vía WhatsApp con ${currentCliente}...`, 'emerald');
+      cerrarModalRespuesta();
+    };
+
+    // ABRIR PDF DESDE EL MODAL DE RESPUESTA
+    window.abrirPdfDesdeModalRespuesta = function() {
+      cerrarModalRespuesta();
+      abrirModalPdfOficial(currentFolio, currentCliente, currentInmueble, 'Dirección registrada en expediente', currentTel, 'contacto@cliente.com');
+    };
+
+    // MODAL PDF OFICIAL
+    window.abrirModalPdfOficial = function(folio, cliente, inmueble, direccion, telefono, correo) {
+      currentFolio = folio;
+      currentCliente = cliente;
+      document.getElementById('modal-pdf-codigo-folio').innerText = folio;
+      document.getElementById('modal-pdf-titulo-archivo').innerText = `${folio}.pdf`;
+      document.getElementById('modal-pdf-nombre').innerText = cliente;
+      document.getElementById('modal-pdf-tipo').innerText = inmueble;
+      document.getElementById('modal-pdf-direccion').innerText = direccion;
+      document.getElementById('modal-pdf-tel').innerText = telefono;
+      document.getElementById('modal-pdf-correo').innerText = correo;
+
+      const modal = document.getElementById('modal-pdf-oficial');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    };
+
+    window.cerrarModalPdfOficial = function() {
+      const modal = document.getElementById('modal-pdf-oficial');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    };
+
+    // MODAL PREVIEW FOTO
+    window.verFotoPreview = function(titulo, archivo) {
+      document.getElementById('preview-foto-titulo').innerText = titulo;
+      document.getElementById('preview-foto-archivo').innerText = archivo;
+      document.getElementById('preview-foto-nombre').innerText = archivo;
+      
+      const modal = document.getElementById('modal-foto-preview');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    };
+
+    window.cerrarFotoPreview = function() {
+      const modal = document.getElementById('modal-foto-preview');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    };
+
+    // DESCARGAR ARCHIVO PDF EMULADO
+    window.descargarPDF = function(folio, cliente) {
+      mostrarToast(`Generando y descargando PDF de ${folio}...`, 'blue');
+      const pdfContent = `Grupo NERBA HIDALGO - SEGURIDAD INTEGRAL\nFOLIO OFICIAL: ${folio}\nCLIENTE: ${cliente}\nESTADO: REGISTRADA Y EVALUADA\nExpediente técnico con certificación oficial IEC.`;
+      const blob = new Blob([pdfContent], { type: 'application/pdf' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `GrupoNerbaHidalgo_${folio}_Expediente.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
+
+    // TOAST NOTIFIER
+    window.mostrarToast = function(mensaje, tipo = 'emerald') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      
+      let borderClass = 'border-emerald-500 bg-white text-slate-800';
+      let iconColor = 'text-emerald-500';
+      if (tipo === 'blue') {
+        borderClass = 'border-blue-500 bg-white text-slate-800';
+        iconColor = 'text-blue-500';
+      }
+
+      toast.className = `p-4 rounded-xl shadow-xl border-l-4 ${borderClass} flex items-center space-x-3 pointer-events-auto max-w-md transition duration-300 transform translate-y-2 opacity-0`;
+      toast.innerHTML = `
+        <div class="${iconColor}">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+        </div>
+        <div class="text-xs font-bold">${mensaje}</div>
+      `;
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      }, 50);
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    };
+
+    // FILTRO DE BÚSQUEDA
+    window.filtrarTabla = function() {
+      const query = document.getElementById('buscador').value;
+      const rows = document.querySelectorAll('tbody tr');
+      const match = (text) => UN.matches(text, query);
+      rows.forEach(row => {
+        row.style.display = match(row.innerText) ? '' : 'none';
+      });
+    };
+
+    window.exportarReporte = function() {
+      mostrarToast('Exportando reporte CSV de cotizaciones...', 'blue');
+    };
+
+    window.actualizarLista = function() {
+      mostrarToast('Sincronizando últimas cotizaciones de la central...', 'emerald');
+    };
+
+    // ESC para cerrar modales y clic en backdrop
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        cerrarModalRespuesta();
+        cerrarModalPdfOficial();
+        cerrarFotoPreview();
+      }
+    });
+
+    document.getElementById('modal-respuesta').addEventListener('click', (e) => {
+      if (e.target === document.getElementById('modal-respuesta')) {
+        cerrarModalRespuesta();
+      }
+    });
+
+    document.getElementById('modal-pdf-oficial').addEventListener('click', (e) => {
+      if (e.target === document.getElementById('modal-pdf-oficial')) {
+        cerrarModalPdfOficial();
+      }
+    });
+
+    document.getElementById('modal-foto-preview').addEventListener('click', (e) => {
+      if (e.target === document.getElementById('modal-foto-preview')) {
+        cerrarFotoPreview();
+      }
+    });
+  </script>
+<!-- FOOTER INSTITUCIONAL -->
+<footer class="bg-white border-t border-slate-200 mt-12 text-slate-600 font-sans">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
+<div class="space-y-3">
+<div class="flex items-center space-x-3">
+<img alt="Grupo NERBA HIDALGO Logo" class="h-9 w-auto object-contain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA4DVL5rwTaiB18rHnfQMrGUea_lfiFMpPkbnHgr5BuyoG_qNYQQuYRPNGI1xypuKwsuyYQ9kRw7XVmcUwDU1M_KUcu3-60P4a87PpsB1AEgyqi41pQlAwXQzP6WqSCzdZ3RMxDaAbZbDIDGUQ5nl50dW4O43xy2YcMu0ZMozU1UoDMZOT1Wo9AECId25UnioDs5heBqk74E35l3d4a3R0yyCKB8slO1yrPMTt5sCVqU5L8apO0C73XUvWBA6fb5QtCc5U">
+<div>
+<span class="text-base font-extrabold tracking-tight text-slate-900 block leading-none">Grupo NERBA HIDALGO</span>
+<span class="text-[9px] tracking-widest font-bold text-brand-600 uppercase">Seguridad Integral</span>
+</div>
+</div>
+<p class="text-xs text-slate-500 leading-relaxed">
+          Líderes en ingeniería de seguridad electrónica, sistemas perimétricos, videovigilancia inteligente y automatizaciones de alta precisión.
+        </p>
+<div class="flex items-center gap-2 pt-1">
+<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">RUC 20608945123</span>
+<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">ISO 9001:2015</span>
+</div>
+</div>
+<div>
+<h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider mb-3">Módulos del Sistema</h4>
+<ul class="space-y-2 text-xs text-slate-600">
+<li class=""><a class="hover:text-brand-600 transition flex items-center gap-1.5 font-medium" href="#cotizaciones"><span class="w-1.5 h-1.5 rounded-full bg-brand-600"></span>Cotizaciones Recibidas</a></li>
+<li class=""><a class="hover:text-brand-600 transition flex items-center gap-1.5" href="#"><span class="w-1.5 h-1.5 rounded-full bg-slate-300"></span>Catálogo de Equipos</a></li>
+<li class=""><a class="hover:text-brand-600 transition flex items-center gap-1.5" href="#"><span class="w-1.5 h-1.5 rounded-full bg-slate-300"></span>Expedientes Técnicos</a></li>
+<li class=""><a class="hover:text-brand-600 transition flex items-center gap-1.5" href="#"><span class="w-1.5 h-1.5 rounded-full bg-slate-300"></span>Inspecciones en Campo</a></li>
+</ul>
+</div>
+<div>
+<h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider mb-3">Atención y Mesa Técnica</h4>
+<ul class="space-y-2 text-xs text-slate-600">
+<li class="flex items-center gap-2"><span class="font-semibold text-slate-800">Central:</span> +51 (1) 800-9988</li>
+<li class="flex items-center gap-2"><span class="font-semibold text-slate-800">WhatsApp:</span> +51 987 654 321</li>
+<li class="flex items-center gap-2"><span class="font-semibold text-slate-800">Mesa 24/7:</span> soporte@unidosnerba.com</li>
+<li class="text-[11px] text-slate-400 pt-1">Lunes a Domingo: Atenci�n y soporte en sitio</li>
+</ul>
+</div>
+<div>
+<h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider mb-3">Cumplimiento y Garantía</h4>
+<div class="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2 text-xs">
+<p class="text-[11px] text-slate-600 leading-relaxed">
+            Todos los proyectos de ingeniería cuentan con certificación técnica IEC y homologación oficial de seguridad integral.
+          </p>
+<div class="flex items-center gap-1.5 text-emerald-700 font-bold text-[11px]">
+<svg class="w-4 h-4 text-emerald-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+            Garantía extendida de 24 meses
+          </div>
+</div>
+</div>
+</div>
+<div class="border-t border-slate-200 pt-6 flex flex-col sm:flex-row justify-between items-center gap-4 text-xs text-slate-500">
+<div class="flex items-center space-x-2">
+<span class="font-extrabold text-slate-900">Grupo NERBA HIDALGO</span>
+<span class="">• Portal Administrativo de Operaciones y Cotizaciones</span>
+</div>
+<div class="flex items-center space-x-6 text-slate-500">
+<span class="">ISO 9001:2015 Certificado</span>
+<span class="">Mesa de Control 24/7</span>
+<span class="font-medium text-slate-600">© 2025 Todos los derechos reservados.</span>
+</div>
+</div>
+</div>
+</footer>
+
+
+
+
+<script src="/js/unidos.js?v=5.5"></script>
+<script src="js/superadmin.js?v=3.3"></script>
+<script>
+  // SuperAdmin real: bandeja centralizada con datos del backend. Diseno intacto.
+  (function () {
+    if (!window.UN || !window.SA) return;
+    if (!UN.requireSuperAdmin('superadmin/cotizaciones.html')) return;
+    UN.rewriteLinks();
+    SA.wireCommon('cotizaciones');
+    var table = document.querySelector('table');
+    if (table && !table.id) table.id = 'saQuotesTable';
+    SA.tableToCards('saQuotesTable');
+
+    var ALL = [];
+    var filter = 'all';
+    var tipoF = 'all';
+    var current = null;
+    var tb = table ? table.querySelector('tbody') : null;
+    if (tb) tb.style.display = 'none';
+    var search = document.getElementById('buscador');
+    var ICON_PDF = '<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>';
+    var ICON_WA = '<svg class="w-3.5 h-3.5 text-emerald-600 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"></path></svg>';
+    var ICON_STATUS = '<svg class="w-3.5 h-3.5 text-slate-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path></svg>';
+    var ICON_DELETE = '<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>';
+
+    function estBadge(e) {
+      e = String(e || 'PENDIENTE').toUpperCase();
+      if (e === 'APROBADA') return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 mt-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1"></span>Evaluación Aprobada</span>';
+      if (e === 'RECHAZADA') return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-600 border border-slate-300 mt-1.5"><span class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-1"></span>Rechazada</span>';
+      return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 mt-1.5"><span class="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1"></span>Pendiente Inspección</span>';
+    }
+    function rowHTML(c) {
+      var estado = String(c.estado || 'PENDIENTE').toUpperCase();
+      var dot = estado === 'APROBADA' ? 'bg-emerald-500' : (estado === 'RECHAZADA' ? 'bg-slate-400' : 'bg-amber-500 animate-pulse');
+      var pdfClass = estado === 'APROBADA' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-brand-600 hover:bg-brand-700';
+      var rowTint = estado === 'APROBADA' ? 'bg-emerald-50/15' : (estado === 'PENDIENTE' ? 'bg-amber-50/15' : '');
+      return '<tr class="hover:bg-slate-50/80 transition duration-150 ' + rowTint + '" data-estado="' + SA.esc(estado) + '" data-tipo="' + (String(c.tipoInmueble || '') === 'Productos Electrónicos' ? 'productos' : 'instalaciones') + '" data-text="' + SA.esc(UN.search([c.folio, c.nombre, c.email, c.producto, c.descripcion])) + '">' +
+        '<td class="py-4 px-6 align-top"><div class="flex items-center space-x-2"><span class="w-2.5 h-2.5 rounded-full ' + dot + '"></span><span class="font-mono font-bold text-slate-900 text-sm">' + SA.esc(c.folio) + '</span></div>' +
+        '<div class="text-xs text-slate-500 mt-1">' + SA.esc(SA.fmtFecha(c.fecha)) + '</div>' + estBadge(estado) +
+        (c.area === 'PROYECTOS_ESPECIALES' ? '<span class="block text-[10px] font-bold text-violet-700 mt-1">PROYECTO ESPECIAL</span>' : '') + '</td>' +
+        '<td class="py-4 px-6 align-top"><div class="font-bold text-slate-900 text-sm">' + SA.esc(c.nombre) + '</div><div class="mt-1 space-y-0.5 text-slate-600 text-[11px]"><div class="flex items-center gap-1.5 text-emerald-700 font-semibold">' + SA.esc(c.telefono || '—') + '</div><div class="text-slate-500 truncate">' + SA.esc(c.email || '') + '</div></div></td>' +
+        '<td class="py-4 px-6 align-top"><div class="font-bold text-slate-800 text-xs">' + SA.esc(c.tipoInmueble || '—') + '</div><div class="text-slate-600 text-[11px]">' + SA.esc(c.direccion || '') + '</div><div class="text-[10px] text-slate-400 mt-1">' + SA.esc(c.distrito || '') + '</div></td>' +
+        '<td class="py-4 px-6 align-top"><span class="text-[10px] font-bold text-slate-500 uppercase">Expediente</span><div class="text-[11px] text-slate-600 mt-1">' + SA.esc(c.producto || 'Sistema integral') + '</div><div class="text-[10px] text-slate-400">Válido hasta ' + SA.esc(c.validez || '—') + '</div></td>' +
+        '<td class="py-4 px-6 align-top"><div class="bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-[11px] leading-relaxed text-slate-700 max-w-sm">' + SA.esc(c.descripcion || '—') + '</div></td>' +
+        '<td class="py-4 pl-4 pr-6 align-top text-left"><div class="flex flex-col gap-1.5 w-full max-w-[155px]">' +
+        '<button class="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg ' + pdfClass + ' text-white font-semibold text-[11px] shadow-xs transition whitespace-nowrap" data-act="pdf" data-role="pdf" data-folio="' + SA.esc(c.folio) + '">' + ICON_PDF + '<span>Descargar PDF</span></button>' +
+        '<button class="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold text-[11px] border border-emerald-200 transition whitespace-nowrap" data-act="wa" data-role="whatsapp" data-folio="' + SA.esc(c.folio) + '">' + ICON_WA + '<span>WhatsApp</span></button>' +
+        '<button class="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] border border-slate-200 transition whitespace-nowrap" data-act="estado" data-role="status" data-folio="' + SA.esc(c.folio) + '">' + ICON_STATUS + '<span>Estatus de la solicitud</span></button>' +
+        '<button class="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 font-semibold text-[11px] border border-red-200 transition whitespace-nowrap" data-act="del" data-role="eliminar" data-folio="' + SA.esc(c.folio) + '" title="Eliminar cotización">' + ICON_DELETE + '<span>Eliminar</span></button>' +
+        '</div></td></tr>';
+    }
+    var estadoMenu = null;
+    var estadoCloser = null;
+    function saToast(message, type) {
+      if (typeof mostrarToast === 'function') mostrarToast(message, type || 'emerald');
+      else if (SA && SA.toast) SA.toast(message, type || 'Cotizaciones');
+    }
+    function closeEstadoMenu() {
+      if (estadoMenu && estadoMenu.parentNode) estadoMenu.parentNode.removeChild(estadoMenu);
+      estadoMenu = null;
+      if (estadoCloser) document.removeEventListener('click', estadoCloser);
+      estadoCloser = null;
+    }
+    function toggleEstadoMenu(btn, c) {
+      closeEstadoMenu();
+      c = c || {};
+      var currentEstado = String(c.estado || 'PENDIENTE').toUpperCase();
+      var menu = document.createElement('div');
+      menu.className = 'fixed z-[100] w-56 bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden';
+      menu.setAttribute('role', 'menu');
+      menu.innerHTML = '<p class="px-4 py-2.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">Estatus de ' + SA.esc(c.folio) + '</p>' +
+        ['PENDIENTE', 'APROBADA', 'RECHAZADA'].map(function (value) {
+          var dot = value === 'APROBADA' ? 'bg-emerald-500' : (value === 'RECHAZADA' ? 'bg-slate-400' : 'bg-amber-500');
+          var mark = value === currentEstado ? ' ✓' : '';
+          var label = value === 'PENDIENTE' ? 'Pendiente' : (value === 'APROBADA' ? 'Aprobada' : 'Rechazada');
+          return '<button type="button" data-est="' + value + '" class="w-full text-left px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2"><span class="w-2 h-2 rounded-full ' + dot + '"></span>' + label + mark + '</button>';
+        }).join('');
+      document.body.appendChild(menu);
+      var rect = btn.getBoundingClientRect();
+      var top = rect.bottom + 6;
+      if (top + menu.offsetHeight > window.innerHeight - 8) top = Math.max(8, rect.top - menu.offsetHeight - 6);
+      menu.style.top = top + 'px';
+      menu.style.left = Math.max(8, Math.min(window.innerWidth - menu.offsetWidth - 8, rect.left)) + 'px';
+      estadoMenu = menu;
+      btn.setAttribute('aria-expanded', 'true');
+      menu.querySelectorAll('[data-est]').forEach(function (option) {
+        option.addEventListener('click', async function () {
+          var value = option.getAttribute('data-est');
+          closeEstadoMenu();
+          try {
+            var updated = await SA.setEstado(c.folio, value);
+            var index = ALL.findIndex(function (item) { return item.folio === c.folio; });
+            if (index >= 0) ALL[index] = updated || Object.assign({}, c, { estado: value });
+            saToast('Estatus actualizado a ' + value.charAt(0) + value.slice(1).toLowerCase() + '.', 'emerald');
+            await load();
+          } catch (error) {
+            saToast(error.message || 'No se pudo actualizar el estatus.', 'red');
+          }
+        });
+      });
+      estadoCloser = function (event) {
+        if (estadoMenu && !estadoMenu.contains(event.target) && !btn.contains(event.target)) closeEstadoMenu();
+      };
+      setTimeout(function () { document.addEventListener('click', estadoCloser); }, 0);
+    }
+    function paintTabs() {
+      var n = { all: ALL.length, PENDIENTE: 0, APROBADA: 0, RECHAZADA: 0 };
+      var nt = { all: ALL.length, instalaciones: 0, productos: 0 };
+      ALL.forEach(function (c) {
+        var e = String(c.estado || 'PENDIENTE').toUpperCase();
+        if (n[e] == null) n[e] = 0;
+        n[e]++;
+        if (String(c.tipoInmueble || '') === 'Productos Electrónicos') nt.productos++;
+        else nt.instalaciones++;
+      });
+      var btns = document.querySelectorAll('.bg-white.p-4 button:not([data-tipo])');
+      var map = [['all', 'Todos'], ['PENDIENTE', 'Pendientes'], ['APROBADA', 'Aprobadas'], ['RECHAZADA', 'Rechazadas']];
+      var i = 0;
+      btns.forEach(function (b) {
+        if (i >= map.length) return;
+        var t = (b.textContent || '');
+        if (/Todos|Pendientes|Respondidas|Aprobadas|Rechazadas/.test(t)) {
+          b.textContent = map[i][1] + ' (' + (n[map[i][0]] || 0) + ')';
+          b.setAttribute('data-f', map[i][0]);
+          if (!b._saF) { b._saF = true; b.addEventListener('click', function () { filter = b.getAttribute('data-f'); applyAll(); }); }
+          i++;
+        }
+      });
+      // Pills de tipo: instalaciones vs productos electrónicos (con conteos).
+      Array.prototype.slice.call(document.querySelectorAll('button[data-tipo]')).forEach(function (b) {
+        var k = b.getAttribute('data-tipo');
+        var label = k === 'all' ? 'Todos los tipos' : (k === 'productos' ? 'Electrónica y refacciones' : 'Instalaciones');
+        b.textContent = label + ' (' + (nt[k == 'all' ? 'all' : k] || 0) + ')';
+        if (!b._saT) {
+          b._saT = true;
+          b.addEventListener('click', function () {
+            tipoF = b.getAttribute('data-tipo');
+            var ON = ['bg-slate-900', 'text-white', 'font-bold', 'shadow-xs'];
+            var OFF = ['bg-slate-100', 'text-slate-700', 'font-semibold'];
+            Array.prototype.slice.call(document.querySelectorAll('button[data-tipo]')).forEach(function (x) {
+              var on = x === b;
+              ON.forEach(function (c) { x.classList.toggle(c, on); });
+              OFF.forEach(function (c) { x.classList.toggle(c, !on); });
+            });
+            applyAll();
+          });
+        }
+      });
+    }
+    function paintStats(users) {
+      var holder = document.getElementById('admin-stats');
+      if (!holder) return;
+      var total = ALL.length;
+      var pendientes = ALL.filter(function (c) { return String(c.estado || 'PENDIENTE').toUpperCase() === 'PENDIENTE'; }).length;
+      var aprobadas = ALL.filter(function (c) { return String(c.estado || '').toUpperCase() === 'APROBADA'; }).length;
+      var cards = [
+        ['description', 'Total recibidas', total],
+        ['pending', 'Pendientes', pendientes],
+        ['verified', 'Aprobadas', aprobadas],
+        ['group', 'Usuarios', Array.isArray(users) ? users.length : 0]
+      ];
+      var icons = {
+        description: '<path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a2 2 0 01.707.293l5.414 5.414A2 2 0 0120 11V19a2 2 0 01-2 2z"/>',
+        pending: '<path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>',
+        verified: '<path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>',
+        group: '<path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>'
+      };
+      holder.innerHTML = cards.map(function (card) {
+        return '<div class="bg-white border border-slate-200 rounded-2xl p-4 flex items-center gap-3"><span class="w-11 h-11 rounded-xl grid place-items-center shrink-0" style="background:rgba(217,27,27,.1)"><svg class="w-6 h-6 text-[#d91b1b]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + (icons[card[0]] || icons.description) + '</svg></span><div><p class="text-2xl font-extrabold leading-none">' + card[2] + '</p><p class="text-[11px] font-bold text-slate-500 uppercase tracking-wider mt-1">' + card[1] + '</p></div></div>';
+      }).join('');
+    }
+    var quotePage = 1;
+    function applyAll() {
+      var q = (search && search.value || '').trim();
+      var rows = tb ? Array.from(tb.querySelectorAll('tr[data-estado]')) : [];
+      var matches = rows.filter(function (tr) {
+        var okE = filter === 'all' || (tr.getAttribute('data-estado') || '').toUpperCase() === filter;
+        var okQ = UN.matches(tr.getAttribute('data-text') || '', q);
+        var okT = tipoF === 'all' || (tr.getAttribute('data-tipo') || '') === tipoF;
+        return okE && okQ && okT;
+      });
+      var pageSize = 10;
+      var pages = matches.length ? Math.ceil(matches.length / pageSize) : 0;
+      quotePage = Math.min(Math.max(1, quotePage), pages || 1);
+      var start = (quotePage - 1) * pageSize;
+      rows.forEach(function (tr) { tr.style.display = 'none'; });
+      matches.slice(start, start + pageSize).forEach(function (tr) { tr.style.display = ''; });
+      var label = document.getElementById('quote-pager-label');
+      if (label) label.textContent = matches.length ? 'Mostrando ' + (start + 1) + ' a ' + Math.min(matches.length, start + pageSize) + ' de ' + matches.length + ' cotizaciones recibidas' : 'Mostrando 0 cotizaciones recibidas';
+      var pager = document.getElementById('quote-pagination');
+      if (pager) {
+        pager.innerHTML = '';
+        if (pages) {
+          function add(labelText, target, disabled) {
+            var button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = labelText;
+            button.className = 'px-3 py-1.5 rounded-lg ' + (target === quotePage ? 'bg-brand-600 text-white font-bold' : 'border border-slate-200 bg-white text-slate-600') + (disabled ? ' opacity-40 cursor-not-allowed' : '');
+            button.disabled = !!disabled;
+            if (!disabled) button.addEventListener('click', function () { quotePage = target; applyAll(); });
+            pager.appendChild(button);
+          }
+          add('Anterior', quotePage - 1, quotePage <= 1);
+          for (var n = 1; n <= pages; n++) add(String(n), n, false);
+          add('Siguiente', quotePage + 1, quotePage >= pages);
+        }
+      }
+      SA.tableToCards('saQuotesTable');
+    }
+    function wireRows() {
+      tb.querySelectorAll('button[data-act]').forEach(function (b) {
+        if (b._saW) return;
+        b._saW = true;
+        if (b.getAttribute('data-act') === 'estado') {
+          b.setAttribute('aria-haspopup', 'menu');
+          b.setAttribute('aria-expanded', 'false');
+        }
+        b.addEventListener('click', async function () {
+          var c = ALL.find(function (x) { return x.folio === b.getAttribute('data-folio'); });
+          if (!c) return;
+          var action = b.getAttribute('data-act');
+          if (action === 'pdf') { UN.viewQuote(c); }
+          else if (action === 'wa') { abrirModalRespuesta(c); }
+          else if (action === 'estado') { toggleEstadoMenu(b, c); }
+          else if (action === 'del') {
+            if (!confirm('¿Eliminar la cotización ' + c.folio + '? Esta acción no se puede deshacer.')) return;
+            try {
+              await SA.delQuote(c.folio);
+              saToast('Cotización ' + c.folio + ' eliminada.', 'emerald');
+              await load();
+            } catch (error) {
+              saToast(error.message || 'No se pudo eliminar la cotización.', 'red');
+            }
+          }
+        });
+      });
+    }
+    async function load() {
+      try { ALL = await SA.quotes(); }
+      catch (e) { saToast('Sin conexión al backend.', 'red'); return; }
+      paintStats([]);
+      SA.users().then(paintStats).catch(function () {});
+      if (tb) { tb.style.display = ''; tb.innerHTML = ALL.map(rowHTML).join('') || '<tr><td colspan="6" class="text-center py-8 text-slate-400">Sin cotizaciones recibidas.</td></tr>'; wireRows(); }
+      paintTabs();
+      applyAll();
+    }
+    // --- Modales del diseño, ahora con datos reales ---
+    window.abrirModalRespuesta = function (c) {
+      if (typeof c === 'string' || !c || !c.folio) return;
+      current = c;
+      currentCliente = c.nombre || '';
+      currentFolio = c.folio || '';
+      currentInmueble = c.tipoInmueble || '';
+      currentTel = c.telefono || '';
+      var set = function (id, v) { var el = document.getElementById(id); if (el) el.textContent = v; };
+      set('modal-resp-subtitulo', 'Cotización: ' + c.folio);
+      set('modal-resp-cliente-nombre', c.nombre || '');
+      set('modal-resp-cliente-telefono', c.telefono || '');
+      set('modal-resp-cliente-inmueble', c.tipoInmueble || '');
+      set('modal-resp-cliente-requerimiento', '"' + (c.descripcion || '') + '"');
+      var ta = document.getElementById('modal-resp-textarea');
+      if (ta) ta.value = 'Estimado(a) ' + (c.nombre || '') + ', le saludamos de Grupo NERBA HIDALGO - Grupo empresarial Nerba s.a de c.v. Hemos revisado su solicitud ' + c.folio + ' para su inmueble (' + (c.tipoInmueble || 'registrado') + '). Para validar técnicamente las canalizaciones y equipos requeridos, nos gustaría agendar una inspección presencial técnica sin costo de compromiso. ¿Qué día y horario le queda mejor para la visita?';
+      var m = document.getElementById('modal-respuesta');
+      if (m) { m.classList.remove('hidden'); m.classList.add('flex'); }
+    };
+    window.cerrarModalRespuesta = function () {
+      var m = document.getElementById('modal-respuesta');
+      if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
+    };
+    window.ejecutarEnvioWhatsAppModal = function () {
+      if (!current) return;
+      var ta = document.getElementById('modal-resp-textarea');
+      var numeroLimpio = String(current.telefono || '').replace(/[^0-9]/g, '');
+      var mensaje = encodeURIComponent((ta && ta.value) || '');
+      window.open('https://api.whatsapp.com/send?phone=' + numeroLimpio + '&text=' + mensaje, '_blank');
+      if (typeof window.cerrarModalRespuesta === 'function') window.cerrarModalRespuesta();
+      saToast('Iniciando conversación vía WhatsApp con ' + (current.nombre || 'el cliente') + '...', 'emerald');
+    };
+    window.abrirPdfDesdeModalRespuesta = function () { if (current) UN.viewQuote(current); };
+    window.abrirModalPdfOficial = function (folio) {
+      var c = ALL.find(function (x) { return x.folio === folio; });
+      if (c) UN.viewQuote(c);
+    };
+    window.cerrarModalPdfOficial = function () {
+      var m = document.getElementById('modal-pdf-oficial');
+      if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
+    };
+    window.verFotoPreview = function () { SA.toast('El expediente digital de esta solicitud no trae fotos adjuntas.', 'Fotos'); };
+    window.cerrarFotoPreview = function () {
+      var m = document.getElementById('modal-foto-preview');
+      if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
+    };
+    window.filtrarTabla = applyAll;
+    window.exportarReporte = function () {
+      SA.csvDownload('grupo_nerba_hidalgo_cotizaciones.csv', [['FOLIO', 'FECHA', 'CLIENTE', 'EMAIL', 'TELEFONO', 'INMUEBLE', 'DIRECCION', 'PRODUCTO', 'ESTADO', 'TOTAL']].concat(ALL.map(function (c) {
+        return [c.folio, c.fecha, c.nombre, c.email, c.telefono || '', c.tipoInmueble || '', c.direccion || '', c.producto || '', c.estado, c.total || ''];
+      })));
+      SA.toast('Resumen CSV descargado.', 'Exportación');
+    };
+    window.actualizarLista = load;
+    window.descargarPDF = function (folio) {
+      var c = ALL.find(function (x) { return x.folio === folio; });
+      if (c) UN.viewQuote(c);
+    };
+    if (search) {
+      var _saT = null;
+      search.addEventListener('input', function () {
+        clearTimeout(_saT);
+        _saT = setTimeout(applyAll, 140); // debounce: no filtrar en cada tecla
+      });
+    }
+    load();
+  })();
+</script>
+<script src="/js/transicion.js?v=1.0"></script>
+<script src="/js/pie-empresa.js?v=1.0"></script>
+</body></html>
+
+

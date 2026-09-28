@@ -1,0 +1,300 @@
+/* ==========================================================================
+   GRUPO NERBA HIDALGO — TEMA OSCURO GLOBAL "RAZER NOC" (v3.0)
+   Paleta: fondo #000/#050507/#06070a, cards #111318/#0a0a0e/#08080c,
+   bordes #252a36/#1b1b24/#22222d, inputs #0c0e14/#282d3c,
+   texto #fff/#c0c6db/#9ca3af, rojo #d91b1b, glow rojo.
+   Se activa con <html class="dark dark-mode"> (clave localStorage nerba_theme).
+   Solo pinta en modo oscuro; en modo claro no toca nada.
+   ========================================================================== */
+
+/* ---------- Base ---------- */
+html.dark-mode body,
+html.dark body {
+  background-color: #050507 !important;
+  color: #e2e8f0 !important;
+}
+html.dark-mode main,
+html.dark main { background-color: #000000 !important; }
+
+/* ---------- Header (todos los headers nativos claros -> negro) ---------- */
+html.dark-mode header,
+html.dark header {
+  background-color: #000000 !important;
+  background: #000000 !important;
+  border-color: #1f1f23 !important;
+  box-shadow: none !important;
+  backdrop-filter: blur(12px);
+}
+html.dark-mode header a,
+html.dark-mode header span,
+html.dark header a,
+html.dark header span { color: #c0c6db; }
+html.dark-mode header a:hover,
+html.dark header a:hover { color: #ffffff !important; }
+html.dark-mode header .text-neutral-900, html.dark header .text-neutral-900,
+html.dark-mode header .text-slate-900, html.dark header .text-slate-900,
+html.dark-mode header .text-on-surface, html.dark header .text-on-surface { color: #ffffff !important; }
+html.dark-mode header .text-neutral-700, html.dark header .text-neutral-700,
+html.dark-mode header .text-slate-700, html.dark header .text-slate-700 { color: #c0c6db !important; }
+html.dark-mode header .text-primary-container, html.dark header .text-primary-container,
+html.dark-mode header .text-primary, html.dark header .text-primary { color: #ffb4aa !important; }
+
+/* Header unificado staff (.unZh blanco -> negro táctico) */
+html.dark-mode header.unZh,
+html.dark header.unZh { background: #000000 !important; border-bottom: 1px solid #1f1f23 !important; box-shadow: none !important; }
+html.dark-mode .unZh-brand b, html.dark .unZh-brand b { color: #ffffff !important; }
+html.dark-mode .unZh-brand small, html.dark .unZh-brand small { color: #ffb4aa !important; }
+html.dark-mode .unZh-nav a, html.dark .unZh-nav a { color: #c0c6db !important; }
+html.dark-mode .unZh-nav a:hover, html.dark .unZh-nav a:hover { background: rgba(217,27,27,.15) !important; color: #ffffff !important; }
+html.dark-mode .unZh-nav a[aria-current="page"], html.dark .unZh-nav a[aria-current="page"] { background: rgba(217,27,27,.18) !important; border-color: rgba(217,27,27,.5) !important; color: #ffffff !important; }
+html.dark-mode .unZh-chip, html.dark .unZh-chip { background: #111318 !important; border-color: #d91b1b66 !important; box-shadow: 0 0 12px rgba(217,27,27,.25); }
+html.dark-mode .unZh-chip:hover, html.dark .unZh-chip:hover { background: #161922 !important; }
+html.dark-mode .unZh-who b, html.dark .unZh-who b { color: #ffffff !important; }
+html.dark-mode .unZh-drop, html.dark .unZh-drop { background: #0a0a0f !important; border-color: #22222d !important; box-shadow: 0 10px 30px rgba(0,0,0,.95) !important; }
+html.dark-mode .unZh-drop a, html.dark .unZh-drop a,
+html.dark-mode .unZh-drop button, html.dark .unZh-drop button { color: #c0c6db !important; }
+html.dark-mode .unZh-drop a:hover, html.dark .unZh-drop a:hover,
+html.dark-mode .unZh-drop button:hover, html.dark .unZh-drop button:hover { background: #16161f !important; color: #ffffff !important; }
+html.dark-mode .unZh-login, html.dark .unZh-login { color: #c0c6db !important; }
+html.dark-mode .unZh-login:hover, html.dark .unZh-login:hover { color: #ffffff !important; }
+
+/* ---------- Secciones / fondos claros -> negros ---------- */
+html.dark-mode section,
+html.dark section { background-color: #050507 !important; border-color: #141416 !important; color: #e2e8f0 !important; }
+html.dark-mode .bg-white, html.dark .bg-white { background-color: #0a0a0e !important; }
+html.dark-mode .bg-neutral-50, html.dark .bg-neutral-50,
+html.dark-mode .bg-slate-50, html.dark .bg-slate-50,
+html.dark-mode .bg-surface, html.dark .bg-surface,
+html.dark-mode .bg-background, html.dark .bg-background { background-color: #050507 !important; }
+html.dark-mode .bg-neutral-100, html.dark .bg-neutral-100,
+html.dark-mode .bg-surface-container-low, html.dark .bg-surface-container-low,
+html.dark-mode .bg-slate-100, html.dark .bg-slate-100 { background-color: #111318 !important; }
+html.dark-mode .bg-surface-container-lowest, html.dark .bg-surface-container-lowest { background-color: #0a0a0e !important; }
+html.dark-mode .bg-surface-container, html.dark .bg-surface-container,
+html.dark-mode .bg-neutral-200\/70, html.dark .bg-neutral-200\/70 { background-color: #161922 !important; }
+html.dark-mode .bg-gradient-to-b.from-white\/80, html.dark .bg-gradient-to-b.from-white\/80 { background: linear-gradient(to bottom, rgba(0,0,0,.8), rgba(0,0,0,.4), rgba(0,0,0,.9)) !important; }
+
+/* Bordes claros -> tácticos */
+html.dark-mode .border-neutral-200, html.dark .border-neutral-200,
+html.dark-mode .border-slate-200, html.dark .border-slate-200,
+html.dark-mode .border-surface-container, html.dark .border-surface-container,
+html.dark-mode .border-surface-container-high, html.dark .border-surface-container-high { border-color: #1b1b24 !important; }
+html.dark-mode .border-neutral-300, html.dark .border-neutral-300,
+html.dark-mode .border-slate-300, html.dark .border-slate-300 { border-color: #252a36 !important; }
+
+/* Textos */
+html.dark-mode .text-neutral-900, html.dark .text-neutral-900,
+html.dark-mode .text-slate-900, html.dark .text-slate-900,
+html.dark-mode .text-slate-800, html.dark .text-slate-800,
+html.dark-mode .text-on-surface, html.dark .text-on-surface,
+html.dark-mode h1, html.dark h1, html.dark-mode h2, html.dark h2, html.dark-mode h3, html.dark h3 { color: #ffffff !important; }
+html.dark-mode .text-neutral-600, html.dark .text-neutral-600,
+html.dark-mode .text-slate-500, html.dark .text-slate-500,
+html.dark-mode .text-slate-600, html.dark .text-slate-600,
+html.dark-mode .text-secondary, html.dark .text-secondary,
+html.dark-mode .text-neutral-500, html.dark .text-neutral-500 { color: #9ca3af !important; }
+html.dark-mode .text-neutral-700, html.dark .text-neutral-700,
+html.dark-mode .text-slate-700, html.dark .text-slate-700,
+html.dark-mode .text-on-surface-variant, html.dark .text-on-surface-variant { color: #c0c6db !important; }
+
+/* ---------- Cards de catálogo / productos ---------- */
+html.dark-mode article.component-card, html.dark article.component-card,
+html.dark-mode .component-card, html.dark .component-card {
+  background: #0a0a0e !important; border-color: #1a1a22 !important;
+  box-shadow: 0 4px 24px rgba(0,0,0,.8) !important;
+}
+html.dark-mode article.component-card:hover, html.dark article.component-card:hover { border-color: rgba(217,27,27,.6) !important; box-shadow: 0 12px 32px rgba(217,27,27,.2) !important; }
+html.dark-mode .category-card, html.dark .category-card { background: #09090d !important; border-color: #1b1b24 !important; }
+html.dark-mode .category-card:hover, html.dark .category-card:hover { background: #0f0f15 !important; border-color: rgba(217,27,27,.7) !important; }
+html.dark-mode .group.bg-neutral-50, html.dark .group.bg-neutral-50 { background: #08080c !important; }
+
+/* Tiles hardware */
+html.dark-mode .bg-neutral-50.hover\:bg-white:hover, html.dark .bg-neutral-50.hover\:bg-white:hover { background: #0d0d12 !important; }
+
+/* ---------- Formularios ---------- */
+html.dark-mode input, html.dark input,
+html.dark-mode select, html.dark select,
+html.dark-mode textarea, html.dark textarea {
+  background-color: #0c0e14 !important; color: #ffffff !important; border-color: #282d3c !important;
+}
+html.dark-mode input::placeholder, html.dark input::placeholder,
+html.dark-mode textarea::placeholder, html.dark textarea::placeholder { color: #64748b !important; }
+html.dark-mode input:focus, html.dark input:focus,
+html.dark-mode select:focus, html.dark select:focus,
+html.dark-mode textarea:focus, html.dark textarea:focus {
+  border-color: #d91b1b !important; box-shadow: 0 0 12px rgba(217,27,27,.35) !important; outline: none !important;
+}
+html.dark-mode label, html.dark label { color: #c0c6db !important; }
+
+/* ---------- Botones ---------- */
+html.dark-mode .bg-primary-container, html.dark .bg-primary-container { background-color: #d91b1b !important; }
+html.dark-mode .bg-primary, html.dark .bg-primary { background-color: #d91b1b !important; }
+
+/* ---------- Tablas (admin / superadmin / especiales / electrónica) ---------- */
+html.dark-mode table, html.dark table { background: #0a0a0e !important; color: #e2e8f0 !important; }
+html.dark-mode thead, html.dark thead { background: #111318 !important; }
+html.dark-mode thead th, html.dark thead th { color: #ffb4aa !important; border-color: #1b1b24 !important; }
+html.dark-mode tbody td, html.dark tbody td { border-color: #1b1b24 !important; color: #c0c6db !important; }
+html.dark-mode tbody tr:hover, html.dark tbody tr:hover { background: #111318 !important; }
+html.dark-mode tbody tr:hover td, html.dark tbody tr:hover td { color: #ffffff !important; }
+
+/* Contenedores blancos de admin */
+html.dark-mode .bg-white.rounded-xl, html.dark .bg-white.rounded-xl,
+html.dark-mode .bg-white.rounded-2xl, html.dark .bg-white.rounded-2xl,
+html.dark-mode .shadow-sm.bg-white, html.dark .shadow-sm.bg-white { background: #111318 !important; border: 1px solid #252a36 !important; box-shadow: 0 8px 24px rgba(0,0,0,.6) !important; }
+
+/* Badges / pills */
+html.dark-mode .bg-red-100, html.dark .bg-red-100 { background: rgba(217,27,27,.15) !important; color: #ffb4aa !important; }
+html.dark-mode .bg-slate-100, html.dark .bg-slate-100,
+html.dark-mode .bg-neutral-100, html.dark .bg-neutral-100 { background: #161922 !important; color: #c0c6db !important; }
+html.dark-mode .bg-slate-50\/70, html.dark .bg-slate-50\/70 { background: rgba(17,19,24,.9) !important; }
+
+/* Dropdowns / modales / drawers */
+html.dark-mode .un-profile-menu, html.dark .un-profile-menu { background: #0a0a0f !important; border-color: #22222d !important; }
+html.dark-mode .un-profile-menu .un-pm-head, html.dark .un-profile-menu .un-pm-head { background: #111318 !important; border-color: #1b1b24 !important; }
+html.dark-mode .un-profile-menu .un-pm-name, html.dark .un-profile-menu .un-pm-name { color: #ffffff !important; }
+html.dark-mode .un-profile-menu .un-pm-mail, html.dark .un-profile-menu .un-pm-mail { color: #aeb8cf !important; }
+html.dark-mode .un-profile-menu .un-pm-link, html.dark .un-profile-menu .un-pm-link { color: #c0c6db !important; }
+html.dark-mode .un-profile-menu .un-pm-link:hover, html.dark .un-profile-menu .un-pm-link:hover { background: #16161f !important; color: #fff !important; }
+html.dark-mode #profileDropdownMenu, html.dark #profileDropdownMenu,
+html.dark-mode #user-profile-dropdown, html.dark #user-profile-dropdown { background: #0a0a0f !important; border-color: #22222d !important; }
+html.dark-mode #profileDropdownMenu a, html.dark #profileDropdownMenu a,
+html.dark-mode #user-profile-dropdown a, html.dark #user-profile-dropdown a { color: #c0c6db !important; }
+html.dark-mode #profileDropdownMenu a:hover, html.dark #profileDropdownMenu a:hover { background: #16161f !important; color: #fff !important; }
+
+/* ---------- Hero claro -> hero cinematográfico oscuro (referencia) ---------- */
+/* Overlays blancos del hero / carrusel en modo claro -> degradados negros */
+html.dark-mode div[class*="from-white"],
+html.dark div[class*="from-white"] {
+  background: linear-gradient(to bottom, rgba(0,0,0,.8), rgba(0,0,0,.4), rgba(0,0,0,.9)) !important;
+}
+html.dark-mode div[class*="radial-gradient(ellipse_at_center,rgba(217,27,27,0.06)"],
+html.dark div[class*="radial-gradient(ellipse_at_center,rgba(217,27,27,0.06)"] {
+  background: radial-gradient(ellipse at center, rgba(217,27,27,.18) 0%, rgba(0,0,0,.6) 60%, #000000 100%) !important;
+}
+html.dark-mode div[class*="radial-gradient(ellipse_at_center,rgba(217,27,27,0.08)"],
+html.dark div[class*="radial-gradient(ellipse_at_center,rgba(217,27,27,0.08)"] {
+  background: radial-gradient(ellipse at center, rgba(217,27,27,.18) 0%, rgba(0,0,0,.6) 60%, #000000 100%) !important;
+}
+/* Marca de agua NERBA clara -> sutil blanca translúcida */
+html.dark-mode span.text-neutral-300\/40, html.dark span.text-neutral-300\/40 {
+  color: transparent !important;
+  background-image: linear-gradient(to bottom, rgba(255,255,255,.4), rgba(255,255,255,.1), transparent) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+}
+/* Hero / secciones claras del index -> negro */
+html.dark-mode section.bg-neutral-50, html.dark section.bg-neutral-50,
+html.dark-mode section.bg-neutral-100, html.dark section.bg-neutral-100,
+html.dark-mode section.bg-white, html.dark section.bg-white { background-color: #050507 !important; }
+html.dark-mode section.bg-gradient-to-b, html.dark section.bg-gradient-to-b { background: #050507 !important; }
+/* Caja del isotipo en ingenieros (blanca -> carbón con glow) */
+html.dark-mode div.bg-white.rounded-2xl.border, html.dark div.bg-white.rounded-2xl.border {
+  background: linear-gradient(rgb(28,31,38), rgb(30,34,41)) !important;
+  border-color: #1b1b24 !important;
+  box-shadow: 0 10px 25px rgba(217,27,27,.35) !important;
+}
+/* Botón secundario claro (COTIZAR/CONFIGURAR) -> cristal oscuro */
+html.dark-mode a.bg-white.border-neutral-300, html.dark a.bg-white.border-neutral-300 {
+  background: rgba(0,0,0,.6) !important;
+  backdrop-filter: blur(12px);
+  border-color: rgba(255,255,255,.2) !important;
+  color: #ffffff !important;
+}
+
+/* ---------- Footer negro puro ---------- */
+html.dark-mode footer, html.dark footer { background: #000000 !important; border-color: #141416 !important; color: #c0c6db !important; }
+html.dark-mode footer h3, html.dark footer h3 { color: #ffffff !important; }
+html.dark-mode footer li, html.dark footer li,
+html.dark-mode footer a, html.dark footer a { color: #a7b0c4 !important; }
+html.dark-mode footer a:hover, html.dark footer a:hover,
+html.dark-mode footer li:hover, html.dark footer li:hover { color: #ffffff !important; }
+
+/* ---------- Login / registro / cards centradas ---------- */
+html.dark-mode .max-w-md.bg-white, html.dark .max-w-md.bg-white,
+html.dark-mode form.bg-white, html.dark form.bg-white { background: #111318 !important; border-color: #252a36 !important; }
+
+/* Scrollbar / selección */
+html.dark-mode ::selection, html.dark ::selection { background: #d91b1b !important; color: #ffffff !important; }
+
+/* Imágenes en oscuro: mismo tratamiento cinematográfico de referencia */
+html.dark-mode img.filter, html.dark img.filter { filter: contrast(1.25) brightness(.9); }
+
+/* Menú móvil */
+html.dark-mode #un-mnav-panel, html.dark #un-mnav-panel { background: #0a0a0f !important; }
+html.dark-mode #un-mnav-panel nav a, html.dark #un-mnav-panel nav a { color: #e2e8f0 !important; }
+html.dark-mode #un-mnav-panel nav a.on, html.dark #un-mnav-panel nav a.on { background: rgba(217,27,27,.15) !important; color: #ffb4aa !important; }
+html.dark-mode #un-mnav-panel .ft, html.dark #un-mnav-panel .ft { border-color: #1b1b24 !important; }
+
+/* Toasts */
+html.dark-mode #toast-feedback, html.dark #toast-feedback,
+html.dark-mode #save-toast, html.dark #save-toast { background: #0c0e14 !important; border-color: rgba(217,27,27,.8) !important; color: #ffffff !important; }
+
+/* ==========================================================================
+   LEGIBILIDAD EN OSCURO (contraste pulido: nada se pierde con el fondo)
+   ========================================================================== */
+html.dark-mode, html.dark { color-scheme: dark; }
+/* Grises apagados -> luminosos (parrafos, hints, labels secundarios) */
+html.dark-mode .text-secondary, html.dark .text-secondary { color: #b3bdcf !important; }
+html.dark-mode .text-slate-500, html.dark .text-slate-500 { color: #9fb0c9 !important; }
+html.dark-mode .text-slate-400, html.dark .text-slate-400 { color: #a9b4c8 !important; }
+html.dark-mode .text-slate-600, html.dark .text-slate-600 { color: #b3bdcf !important; }
+html.dark-mode .text-neutral-500, html.dark .text-neutral-500 { color: #a3aec2 !important; }
+html.dark-mode .text-neutral-600, html.dark .text-neutral-600 { color: #b6bfcf !important; }
+html.dark-mode .text-neutral-700, html.dark .text-neutral-700 { color: #c0c6db !important; }
+html.dark-mode .text-neutral-400, html.dark .text-neutral-400 { color: #a9b4c8 !important; }
+html.dark-mode .text-\[\#8e95a5\], html.dark .text-\[\#8e95a5\] { color: #aeb8cf !important; }
+html.dark-mode .text-\[\#64748b\], html.dark .text-\[\#64748b\] { color: #9fb0c9 !important; }
+html.dark-mode .text-\[\#9ca3af\], html.dark .text-\[\#9ca3af\] { color: #bcc6d8 !important; }
+html.dark-mode .text-\[\#6b7280\], html.dark .text-\[\#6b7280\] { color: #a3aec2 !important; }
+html.dark-mode .text-\[\#575e70\], html.dark .text-\[\#575e70\] { color: #aeb8cf !important; }
+/* Rojos profundos -> legibles sin perder identidad */
+html.dark-mode .text-primary, html.dark .text-primary { color: #ff7b7b !important; }
+html.dark-mode .text-red-600, html.dark .text-red-600 { color: #ff8585 !important; }
+html.dark-mode .text-red-700, html.dark .text-red-700 { color: #ff9d9d !important; }
+html.dark-mode .text-red-800, html.dark .text-red-800 { color: #ffa3a3 !important; }
+html.dark-mode .text-red-900, html.dark .text-red-900 { color: #ffb4ab !important; }
+html.dark-mode .text-red-950, html.dark .text-red-950 { color: #ffc9c2 !important; }
+html.dark-mode .text-brand-700, html.dark .text-brand-700 { color: #ff8f8f !important; }
+html.dark-mode .text-error, html.dark .text-error { color: #ff8585 !important; }
+/* Verdes esmeralda -> menta */
+html.dark-mode .text-emerald-600, html.dark .text-emerald-600 { color: #4ade80 !important; }
+html.dark-mode .text-emerald-700, html.dark .text-emerald-700 { color: #34d399 !important; }
+html.dark-mode .text-emerald-800, html.dark .text-emerald-800 { color: #6ee7b7 !important; }
+/* Ambar/amarillo -> dorado legible */
+html.dark-mode .text-amber-600, html.dark .text-amber-600 { color: #fbbf24 !important; }
+html.dark-mode .text-amber-500, html.dark .text-amber-500 { color: #fbbf24 !important; }
+html.dark-mode .text-amber-900, html.dark .text-amber-900 { color: #fcd34d !important; }
+/* Azul -> cielo */
+html.dark-mode .text-tertiary-container, html.dark .text-tertiary-container { color: #8fb0ff !important; }
+/* Badges pastel claros -> pastillas tacticas oscuras */
+html.dark-mode .bg-red-50, html.dark .bg-red-50,
+html.dark-mode .bg-red-100, html.dark .bg-red-100 { background: rgba(217,27,27,.16) !important; color: #ffb4aa !important; border-color: rgba(217,27,27,.4) !important; }
+html.dark-mode .bg-emerald-50, html.dark .bg-emerald-50,
+html.dark-mode .bg-emerald-100, html.dark .bg-emerald-100 { background: rgba(16,185,129,.14) !important; color: #6ee7b7 !important; border-color: rgba(16,185,129,.35) !important; }
+html.dark-mode .bg-amber-50, html.dark .bg-amber-50 { background: rgba(245,158,11,.14) !important; color: #fcd34d !important; border-color: rgba(245,158,11,.35) !important; }
+html.dark-mode .bg-blue-50, html.dark .bg-blue-50 { background: rgba(59,130,246,.16) !important; color: #93c5fd !important; border-color: rgba(59,130,246,.35) !important; }
+/* Botones solidos -> texto blanco garantizado */
+html.dark-mode .bg-red-600, html.dark .bg-red-600,
+html.dark-mode .bg-emerald-600, html.dark .bg-emerald-600,
+html.dark-mode .bg-emerald-500, html.dark .bg-emerald-500,
+html.dark-mode .bg-blue-500, html.dark .bg-blue-500,
+html.dark-mode .bg-amber-500, html.dark .bg-amber-500 { color: #ffffff !important; }
+/* Placeholders visibles */
+html.dark-mode input::placeholder, html.dark input::placeholder,
+html.dark-mode textarea::placeholder, html.dark textarea::placeholder { color: #8291a8 !important; opacity: 1 !important; }
+/* Divisores y bordes utilitarios */
+html.dark-mode .divide-slate-200 > *, html.dark .divide-slate-200 > *,
+html.dark-mode .divide-neutral-200 > *, html.dark .divide-neutral-200 > *,
+html.dark-mode .divide-slate-100 > *, html.dark .divide-slate-100 > * { border-color: #1b1b24 !important; }
+html.dark-mode hr, html.dark hr { border-color: #1b1b24 !important; }
+/* Texto mono (folios, IPs, hashes) siempre nitido */
+html.dark-mode .font-mono, html.dark .font-mono { color: #dbe3f0 !important; }
+/* Enlaces tenues */
+html.dark-mode a.text-slate-500, html.dark a.text-slate-500,
+html.dark-mode a.text-neutral-500, html.dark a.text-neutral-500 { color: #9fb0c9 !important; }
+html.dark-mode a.text-slate-500:hover, html.dark a.text-slate-500:hover { color: #ffffff !important; }
+/* Foco visible accesible */
+html.dark-mode :focus-visible, html.dark :focus-visible { outline: 2px solid #d91b1b !important; outline-offset: 2px !important; }
+
+/* Reduce motion / highlight se respetan (clases de accesibilidad) */

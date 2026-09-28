@@ -1,0 +1,316 @@
+<!DOCTYPE html><html lang="es" class="h-full" style=""><head>
+<script src="js/tema-oscuro.js?v=3.8"></script>
+<link rel="stylesheet" href="css/tema-oscuro-razor.css?v=3.0" data-razor-dark="1">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GRUPO NERBA HIDALGO</title><link rel="icon" type="image/svg+xml" href="/assets/nerba-isotipo.svg">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#fef2f2',
+              100: '#fee2e2',
+              500: '#ef4444',
+              600: '#dc2626',
+              700: '#b91c1c',
+              800: '#991b1b',
+              900: '#7f1d1d',
+              primary: '#d91b1b',
+            }
+          },
+          keyframes: {
+            fadeInUp: {
+              '0%': { opacity: '0', transform: 'translateY(18px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' }
+            },
+            shimmer: {
+              '100%': { transform: 'translateX(100%)' }
+            },
+            pulseSubtle: {
+              '0%, 100%': { opacity: '1' },
+              '50%': { opacity: '0.45' }
+            }
+          },
+          animation: {
+            'fade-in-up': 'fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+            'pulse-subtle': 'pulseSubtle 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: radial-gradient(circle at 50% 0%, #f1f5f9 0%, #f8fafc 100%);
+    }
+    .custom-input:focus {
+      border-color: #d91b1b;
+      box-shadow: 0 0 0 3px rgba(217, 27, 27, 0.12);
+    }
+    .shimmer-btn::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+      transition: all 0.75s;
+    }
+    .shimmer-btn:hover::after {
+      left: 100%;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, ::before, ::after {
+        animation-delay: -1ms !important;
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+        background-attachment: initial !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0s !important;
+        transition-delay: 0s !important;
+      }
+    }
+  </style>
+</head>
+<body class="min-h-full flex flex-col p-4 sm:p-6 lg:p-8 antialiased text-slate-800 selection:bg-red-500 selection:text-white relative overflow-x-hidden">
+
+  <!-- Subtle background ambient grid -->
+  <div class="fixed inset-0 pointer-events-none opacity-40 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:24px_24px] -z-10"></div>
+
+  <!-- Registration Card Container -->
+  <main class="w-full max-w-[490px] m-auto bg-white rounded-3xl border border-slate-200/80 shadow-[0_20px_50px_-15px_rgba(15,23,42,0.07)] p-8 sm:p-10 animate-fade-in-up relative backdrop-blur-sm transition-all duration-300 hover:shadow-[0_25px_60px_-15px_rgba(15,23,42,0.1)]">
+
+    <!-- Header / Brand Identity -->
+    <header class="flex flex-col items-center text-center mb-7">
+      <a href="#" class="inline-flex items-center justify-center p-3 rounded-2xl bg-red-50/70 border border-red-100 mb-4 transition-transform duration-300 hover:scale-105 active:scale-95 group">
+        <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuBoCxwycWF9Tf-nB24Fc3YGHlClexairniX9DV3x4lyMKflGF3Bm9ovML7gZ_eaPyxNT_kpCQ-ohwF4E-u9AIT3ctGp__OjD3eVNCD48Z1zg03STYPpGD0ceAWU8JY80ygRHJPi6dfjcdY5jYOrk6hk124H13i2dv6ojIbTZVRVmwjBVSscgV0acOP3g377i_d7IrFdvLfazL2VzxayjuOwFHDN8Vnd6UlNcwqhgN7LVXpYsXgSnsrC9jdUib37cu5ex-w" alt="Logotipo Oficial Grupo NERBA HIDALGO" class="w-12 h-10 object-contain drop-shadow-sm transition-transform duration-300 group-hover:rotate-1">
+      </a>
+      
+      <span class="text-xs uppercase font-extrabold tracking-widest text-slate-800 flex items-center gap-1.5 mb-1.5">
+        Grupo NERBA HIDALGO
+      </span>
+
+      <!-- System status pill -->
+      <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold tracking-wide uppercase mb-3">
+        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse-subtle"></span>
+        REGISTRO SEGURO • BENEFICIO INMEDIATO
+      </div>
+
+      <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 mb-2">
+        Crear Cuenta
+      </h1>
+      <p class="text-xs sm:text-sm text-slate-500 max-w-sm leading-relaxed">
+        Regístrate para cotizar tus instalaciones y tu seguridad.</p>
+    </header>
+
+    <!-- Registration Form -->
+    <form class="space-y-4" id="registerForm" onsubmit="event.preventDefault();">
+      
+      <!-- Full Name Field -->
+      <div>
+        <label for="fullName" class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+          Nombre completo
+        </label>
+        <div class="relative group">
+          <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-red-600 transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+            </svg>
+          </div>
+          <input type="text" id="fullName" required="" placeholder="Ej. Carlos Mendoza" class="custom-input w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 text-sm bg-slate-50/50 text-slate-800 placeholder-slate-400 outline-none transition-all duration-200">
+        </div>
+      </div>
+
+      <!-- Email Field -->
+      <div>
+        <label for="email" class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+          Correo electrónico
+        </label>
+        <div class="relative group">
+          <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-red-600 transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"></path>
+            </svg>
+          </div>
+          <input type="email" id="email" required="" placeholder="usuario@nerba.mx" class="custom-input w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 text-sm bg-slate-50/50 text-slate-800 placeholder-slate-400 outline-none transition-all duration-200">
+        </div>
+      </div>
+
+      <!-- Phone / WhatsApp Field -->
+      <div>
+        <label for="phone" class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+          Teléfono / WhatsApp
+        </label>
+        <div class="relative group">
+          <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-red-600 transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path>
+            </svg>
+          </div>
+          <input type="tel" id="phone" placeholder="+52 55 9876 5432" class="custom-input w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 text-sm bg-slate-50/50 text-slate-800 placeholder-slate-400 outline-none transition-all duration-200">
+        </div>
+      </div>
+
+      <!-- Password Grid -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <!-- Password -->
+        <div>
+          <label for="password" class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+            Contraseña
+          </label>
+          <div class="relative group">
+            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-red-600 transition-colors">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+              </svg>
+            </div>
+            <input type="password" id="password" required="" placeholder="••••••••••" class="custom-input w-full pl-10 pr-9 py-2.5 rounded-xl border border-slate-200 text-sm bg-slate-50/50 text-slate-800 placeholder-slate-400 outline-none transition-all duration-200">
+            <button type="button" onclick="const p = document.getElementById('password'); p.type = p.type === 'password' ? 'text' : 'password';" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition-colors" title="Mostrar u ocultar contraseña">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Confirm Password -->
+        <div>
+          <label for="confirmPassword" class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+            Confirmar
+          </label>
+          <div class="relative group">
+            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-red-600 transition-colors">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+              </svg>
+            </div>
+            <input type="password" id="confirmPassword" required="" placeholder="••••••••••" class="custom-input w-full pl-10 pr-9 py-2.5 rounded-xl border border-slate-200 text-sm bg-slate-50/50 text-slate-800 placeholder-slate-400 outline-none transition-all duration-200">
+            <button type="button" onclick="const cp = document.getElementById('confirmPassword'); cp.type = cp.type === 'password' ? 'text' : 'password';" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition-colors" title="Mostrar u ocultar contraseña">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Terms and Conditions Checkbox -->
+      <div class="pt-1">
+        <label class="flex items-start gap-2.5 cursor-pointer text-xs text-slate-600 select-none">
+          <input type="checkbox" required="" class="mt-0.5 rounded border-slate-300 text-red-600 focus:ring-red-500 transition-colors">
+          <span class="">Acepto los <a href="#" class="font-bold text-red-600 hover:underline">Términos del Servicio</a> y la <a href="#" class="font-bold text-red-600 hover:underline">Política de Privacidad</a> de Grupo NERBA HIDALGO.</span>
+        </label>
+      </div>
+
+      <!-- Primary CTA Button -->
+      <button type="submit" class="shimmer-btn relative overflow-hidden w-full py-3.5 px-6 rounded-xl bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-bold text-sm shadow-lg shadow-red-600/25 hover:shadow-red-600/40 transition-all duration-300 transform hover:-translate-y-0.5 flex items-center justify-center gap-2 group">
+        <span class="">Crear Cuenta y Cotizar</span>
+        <svg class="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+        </svg>
+      </button>
+
+      <!-- Divider (Clean, without Portal Clientes) -->
+      <div class="relative py-2 flex items-center justify-center">
+        <div class="absolute inset-0 flex items-center">
+          <div class="w-full border-t border-slate-200"></div>
+        </div>
+        <span class="relative bg-white px-3 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+          O continuar con
+        </span>
+      </div>
+
+      <!-- Google Social Button Only (Portal Clientes removed as requested) -->
+      <button type="button" class="w-full py-2.5 px-4 rounded-xl border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs sm:text-sm transition-all duration-200 flex items-center justify-center gap-2.5 shadow-sm hover:shadow active:scale-[0.99] group">
+        <svg class="w-4 h-4 transition-transform duration-200 group-hover:scale-110" viewBox="0 0 24 24">
+          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"></path>
+          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"></path>
+          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"></path>
+          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"></path>
+        </svg>
+        <span class="">Continuar con Google</span>
+      </button>
+
+      <!-- Navigation Links -->
+      <div class="text-center pt-2 space-y-3">
+        <p class="text-xs text-slate-500">
+          ¿Ya tienes una cuenta? 
+          <a href="#" class="font-bold text-red-600 hover:text-red-700 hover:underline inline-flex items-center gap-0.5">
+            Iniciar Sesión
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+            </svg>
+          </a>
+        </p>
+
+        <div>
+          <a href="#" class="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 transition-colors group">
+            <svg class="w-3.5 h-3.5 transition-transform duration-200 group-hover:-translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+            </svg>
+            <span class="">Volver al catálogo de seguridad</span>
+          </a>
+        </div>
+      </div>
+
+    </form>
+
+    <!-- Trust Badges -->
+    <div class="mt-8 pt-5 border-t border-slate-100 flex items-center justify-center gap-4 text-[11px] font-medium text-slate-400">
+      
+      
+    </div>
+
+  </main>
+
+  <footer class="w-full"></footer>
+
+<script src="js/unidos.js?v=5.5"></script>
+<script>
+  // Registro real contra el backend (mismo diseno)
+  document.getElementById('registerForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var nombre = document.getElementById('fullName').value.trim();
+    var email = document.getElementById('email').value.trim();
+    var phone = document.getElementById('phone').value.trim();
+    var p1 = document.getElementById('password').value;
+    var p2 = document.getElementById('confirmPassword').value;
+    var btn = this.querySelector('button[type="submit"]');
+    var label = btn.querySelector('span');
+    var orig = label ? label.textContent : btn.textContent;
+    if (p1 !== p2) { alert('Las contraseñas no coinciden.'); return; }
+    if (label) label.textContent = 'Creando tu cuenta...';
+    btn.disabled = true;
+    try {
+      var r = await UN.api('/api/register', { method: 'POST', body: { nombre: nombre, email: email, telefono: phone, password: p1 } });
+      UN.setSession(r.token, r);
+      try { sessionStorage.setItem('un_fresh_login', '1'); } catch (e) {}
+      if (label) label.textContent = '¡Cuenta creada! Redirigiendo...';
+      setTimeout(function () { location.href = 'cotizador.html'; }, 900);
+    } catch (err) {
+      alert(err.message);
+      if (label) label.textContent = orig;
+      btn.disabled = false;
+    }
+  });
+  UN.rewriteLinks();
+</script>
+
+<script src="/js/transicion.js?v=1.0"></script>
+<script src="/js/pie-empresa.js?v=1.0"></script>
+</body></html>
+
+

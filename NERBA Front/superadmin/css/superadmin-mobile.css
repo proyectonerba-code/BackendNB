@@ -1,0 +1,155 @@
+/* Grupo NERBA HIDALGO - UI compartida SuperAdmin (capa no destructiva).
+   Colores planos a propósito: cada página trae una paleta Tailwind distinta. */
+
+/* ---- Header único SuperAdmin (igual en las 5 páginas) ---- */
+header.sa-unified {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+  box-shadow: 0 1px 6px rgba(2, 6, 23, .06);
+}
+.sa-head-inner {
+  max-width: 80rem;
+  margin: 0 auto;
+  padding: 0 16px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.sa-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; flex-shrink: 0; }
+.sa-brand img { height: 36px; width: auto; object-fit: contain; }
+.sa-brand-txt b { display: block; font-size: 17px; font-weight: 800; letter-spacing: .02em; color: #0b1c30; line-height: 1.1; }
+.sa-brand-txt small { display: block; font-size: 9px; font-weight: 800; letter-spacing: .22em; color: #b0000b; }
+.sa-nav { display: flex; align-items: center; gap: 6px; margin: 0 auto; overflow-x: auto; scrollbar-width: none; }
+.sa-nav::-webkit-scrollbar { display: none; }
+.sa-nav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #475569;
+  text-decoration: none;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.sa-nav a svg { width: 16px; height: 16px; flex-shrink: 0; }
+.sa-nav a:hover { background: #f1f5f9; color: #0b1c30; }
+.sa-nav a:active { transform: scale(.97); }
+.sa-nav a[aria-current="page"] { background: #fef2f2; border-color: #fecaca; color: #b0000b; font-weight: 800; }
+.sa-count { background: #b0000b; color: #fff; border-radius: 9999px; font-size: 11px; font-weight: 800; padding: 1px 7px; line-height: 1.5; }
+.sa-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 6px 10px 6px 6px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.sa-chip:hover { background: #f8fafc; }
+.sa-avatar { position: relative; width: 36px; height: 36px; flex-shrink: 0; }
+.sa-avatar img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; display: block; }
+.sa-dot { position: absolute; bottom: 0; right: 0; width: 10px; height: 10px; border-radius: 50%; background: #10b981; border: 2px solid #fff; }
+.sa-who { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.25; }
+.sa-who b { font-size: 13px; font-weight: 700; color: #0b1c30; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sa-role { font-size: 9px; font-weight: 800; letter-spacing: .08em; background: #b0000b; color: #fff; border-radius: 5px; padding: 2px 6px; margin-top: 2px; }
+.sa-chev { width: 16px; height: 16px; color: #94a3b8; flex-shrink: 0; }
+@media (max-width: 900px) {
+  .sa-who { display: none; }
+  .sa-head-inner { gap: 10px; }
+}
+@media (max-width: 720px) {
+  .sa-head-inner { flex-wrap: wrap; height: auto; padding: 10px 12px; row-gap: 8px; }
+  .sa-brand img { height: 30px; }
+  .sa-brand-txt b { font-size: 15px; }
+  .sa-nav { order: 3; flex-basis: 100%; margin: 0; }
+  .sa-chip { margin-left: auto; }
+}
+
+/* ---- Botones del header (diseños originales, por si alguno queda) ---- */
+header nav a {
+  border-radius: 10px !important;
+  border: 1px solid transparent !important;
+  transition: background .18s ease, color .18s ease, border-color .18s ease, transform .12s ease;
+}
+header nav a:hover { background: rgba(2, 6, 23, .05) !important; }
+header nav a:active { transform: scale(.97); }
+header nav a[aria-current="page"] {
+  background: rgba(176, 0, 11, .08) !important;
+  border-color: rgba(176, 0, 11, .28) !important;
+  color: #b0000b !important;
+  font-weight: 800 !important;
+}
+header nav a[aria-current="page"] svg { color: #b0000b !important; }
+/* Contadores del nav con estilo propio (no dependen de la paleta Tailwind) */
+header nav a [data-badge] {
+  background: #b0000b;
+  color: #fff;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+/* Tablas -> tarjetas en móvil. Requiere SA.tableToCards(id) que pone data-label. */
+@media (max-width: 767px) {
+  table.sa-responsive thead { display: none; }
+  table.sa-responsive,
+  table.sa-responsive tbody,
+  table.sa-responsive tr,
+  table.sa-responsive td { display: block; width: 100%; }
+  table.sa-responsive tbody tr {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    margin: 0 12px 12px 12px;
+    width: auto;
+    box-shadow: 0 2px 10px rgba(2, 6, 23, .06);
+    overflow: hidden;
+  }
+  table.sa-responsive td {
+    border: 0 !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+    padding: 10px 14px !important;
+    text-align: left !important;
+    vertical-align: top;
+  }
+  table.sa-responsive td:last-child { border-bottom: 0 !important; }
+  table.sa-responsive td::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: #64748b;
+    margin-bottom: 4px;
+  }
+  table.sa-responsive td:first-child::before { display: none; }
+  .sa-table-wrap { overflow-x: visible !important; }
+}
+
+/* KPIs y filtros: respiran en 360px */
+@media (max-width: 640px) {
+  .role-filter-tab { white-space: nowrap; }
+  #userFormModal > div, #deleteConfirmModal > div,
+  #product-admin-modal .modal-card-scale,
+  #modal-respuesta > div, #modal-pdf-oficial > div {
+    max-height: 92dvh;
+  }
+  #modal-respuesta, #modal-pdf-oficial { align-items: flex-end; }
+  #modal-pdf-oficial .max-w-4xl { border-radius: 18px 18px 0 0; }
+}
+
+/* Header SuperAdmin: evita que el nav tape el contenido en móvil */
+@media (max-width: 1023px) {
+  header nav { scrollbar-width: thin; }
+}

@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GRUPO NERBA HIDALGO</title><link rel="icon" type="image/svg+xml" href="/assets/nerba-isotipo.svg">
+<script src="/js/tema-oscuro.js?v=3.8"></script>
+<link rel="stylesheet" href="/css/tema-oscuro-razor.css?v=3.0" data-razor-dark="1">
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+body { font-family: 'Plus Jakarta Sans', sans-serif; }
+.custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+</style>
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-900 flex flex-col antialiased">
+<header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+    <a href="/admin/catalogo.html" class="flex items-center gap-3">
+      <span class="text-xl font-extrabold tracking-tight text-slate-900">Grupo NERBA HIDALGO</span>
+    </a>
+    <nav class="hidden md:flex items-center gap-2">
+      <a href="/admin/cotizaciones.html" class="px-3.5 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-brand-700 hover:bg-slate-100">Cotizaciones recibidas</a>
+      <a href="/admin/catalogo.html" class="px-3.5 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-brand-700 hover:bg-slate-100">Catálogo</a>
+      <a href="/admin/historial.html" class="px-3.5 py-2 rounded-lg text-sm font-bold bg-brand-50 text-brand-700 border border-brand-200">Historial general</a>
+    </nav>
+    <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Vista de administración</span>
+  </div>
+</header>
+<main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+  <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-200 pb-6">
+    <div>
+      <div class="flex items-center space-x-2 text-xs font-bold text-brand-700 uppercase tracking-widest mb-1"><span class="inline-block w-2 h-2 rounded-full bg-brand-700"></span><span>Registro operativo compartido</span></div>
+      <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Historial general de cotizaciones</h1>
+      <p class="text-sm text-slate-500 mt-1 max-w-3xl">Consulta las solicitudes disponibles para tu rol por título, folio, cliente y estado. La vista muestra el estado operativo y el responsable administrativo del cambio para mantener una trazabilidad clara.</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <a href="/admin/cotizaciones.html" class="inline-flex items-center px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-50 transition shadow-xs">Volver a cotizaciones</a>
+      <button id="btnHistoryRefresh" type="button" class="inline-flex items-center px-4 py-2.5 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-sm font-semibold transition shadow-sm">Actualizar</button>
+    </div>
+  </div>
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs"><p class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total de solicitudes</p><p id="kTotal" class="text-3xl font-extrabold text-slate-900 mt-1">0</p></div>
+    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs"><p class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Pendientes</p><p id="kPend" class="text-3xl font-extrabold text-amber-700 mt-1">0</p></div>
+    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs"><p class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Aprobadas</p><p id="kAprob" class="text-3xl font-extrabold text-emerald-700 mt-1">0</p></div>
+    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs"><p class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Rechazadas</p><p id="kRech" class="text-3xl font-extrabold text-slate-600 mt-1">0</p></div>
+  </div>
+  <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div id="historyFilters" class="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
+      <button data-history-state="todas" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-900 text-white whitespace-nowrap shadow-xs">Todas</button>
+      <button data-history-state="PENDIENTE" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition whitespace-nowrap">Pendientes</button>
+      <button data-history-state="APROBADA" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition whitespace-nowrap">Aprobadas</button>
+      <button data-history-state="RECHAZADA" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition whitespace-nowrap">Rechazadas</button>
+    </div>
+    <div class="flex items-center gap-3 w-full md:w-auto">
+      <div class="relative w-full md:w-72">
+        <input id="historySearch" class="w-full pl-10 pr-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-700 focus:bg-white transition" placeholder="Buscar por título, folio o cliente..." type="text">
+        <svg class="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"></path></svg>
+      </div>
+      <button id="btnHistoryCsv" type="button" class="inline-flex items-center px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 transition whitespace-nowrap">Exportar CSV</button>
+    </div>
+  </div>
+  <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+    <div class="overflow-x-auto custom-scrollbar">
+      <table class="w-full min-w-[980px] text-left border-collapse text-sm">
+        <thead><tr class="bg-slate-50/80 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[11px] font-bold"><th class="py-4 px-6">Fecha / Folio</th><th class="py-4 px-6">Título de la solicitud</th><th class="py-4 px-6">Cliente</th><th class="py-4 px-6">Tipo</th><th class="py-4 px-6">Estado</th><th class="py-4 px-6">Responsable del cambio</th><th class="py-4 px-6 text-right">Acción</th></tr></thead>
+        <tbody id="historyBody" class="divide-y divide-slate-200 text-slate-700 text-xs"><tr><td colspan="7" class="text-center py-8 text-slate-400">Cargando historial...</td></tr></tbody>
+      </table>
+    </div>
+    <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 text-xs text-slate-500" id="historyFoot">Sin registros todavía.</div>
+  </div>
+</main>
+<footer class="bg-white border-t border-slate-200 mt-12"><div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500"><div class="flex items-center gap-2"><span class="font-extrabold text-slate-900">Grupo NERBA HIDALGO</span><span>Portal de historial de cotizaciones</span></div><span>© 2025 Todos los derechos reservados.</span></div></footer>
+<script src="/js/unidos.js?v=5.5"></script>
+<script>
+(function () {
+  if (!window.UN || !UN.requireStaff('/admin/historial.html')) return;
+  var currentUser = UN.getUser() || {};
+  if (currentUser.rol === 'SUPERADMIN') { location.href = '/superadmin/bitacora.html'; return; }
+  UN.rewriteLinks();
+  try { if (UN.ensureMenu) UN.ensureMenu('admin'); } catch (e) {}
+  var all = [];
+  var mode = 'todas';
+  var query = '';
+  var body = document.getElementById('historyBody');
+  var foot = document.getElementById('historyFoot');
+  function esc(value) { return UN.esc(value); }
+  function stateOf(c) { return String(c.estado || 'PENDIENTE').toUpperCase(); }
+  function titleOf(c) {
+    var value = String(c.producto || c.descripcion || c.tipoInmueble || 'Solicitud de cotización').replace(/\s+/g, ' ').trim();
+    return value.slice(0, 140) || 'Solicitud de cotización';
+  }
+  function dateOf(value) {
+    if (!value) return '—';
+    var d = new Date(String(value) + 'T00:00:00');
+    if (Number.isNaN(d.getTime())) return String(value);
+    return d.toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: '2-digit' });
+  }
+  function attributionOf(c) {
+    var state = stateOf(c);
+    var history = Array.isArray(c.estadoHistorial) ? c.estadoHistorial : [];
+    if (!history.length) return state === 'APROBADA' ? 'Aprobada inicialmente · responsable no registrado' : (state === 'RECHAZADA' ? 'Rechazada inicialmente · responsable no registrado' : 'Pendiente · sin cambio administrativo registrado');
+    var recent = history.slice(-3).reverse().map(function (entry) {
+      var entryState = String(entry.estado || '').toUpperCase();
+      var label = entryState === 'APROBADA' ? 'Aprobada por' : (entryState === 'RECHAZADA' ? 'Rechazada por' : 'Actualizada por');
+      var name = entry.nombre || entry.usuario || 'Administración';
+      var role = entry.rol ? ' · ' + entry.rol : '';
+      var when = entry.fecha ? ' · ' + dateOf(String(entry.fecha).slice(0, 10)) : '';
+      return label + ': ' + name + role + when;
+    });
+    return recent.join(' · ') + (history.length > 3 ? ' · +' + (history.length - 3) + ' cambios' : '');
+  }
+  function badge(state) {
+    if (state === 'APROBADA') return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Aprobada</span>';
+    if (state === 'RECHAZADA') return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-300">Rechazada</span>';
+    return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">Pendiente</span>';
+  }
+  function rowHTML(c) {
+    var state = stateOf(c);
+    var title = titleOf(c);
+    var attribution = attributionOf(c);
+    var search = UN.search([title, c.folio, c.nombre, c.email, c.tipoInmueble, attribution]);
+    return '<tr data-history-estado="' + esc(state) + '" data-history-text="' + esc(search) + '" class="hover:bg-slate-50/80 transition"><td class="py-4 px-6 align-top"><div class="font-mono font-bold text-slate-900 text-sm">' + esc(c.folio) + '</div><div class="text-xs text-slate-500 mt-1">' + esc(dateOf(c.fecha)) + '</div></td><td class="py-4 px-6 align-top"><div class="font-bold text-slate-900 text-xs">' + esc(title) + '</div><div class="text-slate-500 text-[11px] mt-1 line-clamp-2">' + esc(String(c.descripcion || '').slice(0, 150)) + '</div></td><td class="py-4 px-6 align-top"><div class="font-bold text-slate-900 text-xs">' + esc(c.nombre || '—') + '</div><div class="text-slate-500 text-[11px] mt-1">' + esc(c.email || '') + '</div></td><td class="py-4 px-6 align-top text-slate-600">' + esc(c.tipoInmueble || 'General') + '</td><td class="py-4 px-6 align-top">' + badge(state) + '</td><td class="py-4 px-6 align-top"><span class="text-slate-700 text-[11px] font-semibold">' + esc(attribution) + '</span></td><td class="py-4 px-6 align-top text-right"><button type="button" data-history-folio="' + esc(c.folio) + '" class="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-700 text-white text-[11px] font-bold transition">Ver expediente</button></td></tr>';
+  }
+  function countState(state) { return all.filter(function (c) { return stateOf(c) === state; }).length; }
+  function paintKpis() {
+    document.getElementById('kTotal').textContent = all.length;
+    document.getElementById('kPend').textContent = countState('PENDIENTE');
+    document.getElementById('kAprob').textContent = countState('APROBADA');
+    document.getElementById('kRech').textContent = countState('RECHAZADA');
+  }
+  function apply() {
+    var visible = 0;
+    body.querySelectorAll('tr[data-history-estado]').forEach(function (row) {
+      var okState = mode === 'todas' || row.getAttribute('data-history-estado') === mode;
+      var okQuery = UN.matches(row.getAttribute('data-history-text') || '', query);
+      row.style.display = okState && okQuery ? '' : 'none';
+      if (okState && okQuery) visible += 1;
+    });
+    foot.textContent = 'Mostrando ' + visible + ' de ' + all.length + ' solicitudes.';
+  }
+  function render() {
+    body.innerHTML = all.length ? all.map(rowHTML).join('') : '<tr><td colspan="7" class="text-center py-8 text-slate-400">Sin solicitudes registradas.</td></tr>';
+    paintKpis();
+    apply();
+  }
+  function setFilterState(button) {
+    Array.prototype.slice.call(document.querySelectorAll('[data-history-state]')).forEach(function (item) {
+      var active = item === button;
+      item.classList.toggle('bg-slate-900', active);
+      item.classList.toggle('text-white', active);
+      item.classList.toggle('bg-slate-100', !active);
+      item.classList.toggle('text-slate-700', !active);
+    });
+  }
+  document.querySelectorAll('[data-history-state]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      mode = button.getAttribute('data-history-state') || 'todas';
+      setFilterState(button);
+      apply();
+    });
+  });
+  var search = document.getElementById('historySearch');
+  var debounce = null;
+  search.addEventListener('input', function () {
+    clearTimeout(debounce);
+    debounce = setTimeout(function () { query = search.value.trim(); apply(); }, 120);
+  });
+  body.addEventListener('click', function (event) {
+    var button = event.target.closest ? event.target.closest('[data-history-folio]') : null;
+    if (!button) return;
+    var folio = button.getAttribute('data-history-folio');
+    var quote = all.filter(function (c) { return c.folio === folio; })[0];
+    if (quote) UN.viewQuote(quote);
+  });
+  document.getElementById('btnHistoryRefresh').addEventListener('click', load);
+  document.getElementById('btnHistoryCsv').addEventListener('click', function () {
+    var rows = [['titulo', 'folio', 'fecha', 'cliente', 'email', 'tipo', 'estado', 'responsable']];
+    all.forEach(function (c) { rows.push([titleOf(c), c.folio, c.fecha, c.nombre, c.email, c.tipoInmueble, stateOf(c), attributionOf(c)]); });
+    var csv = rows.map(function (row) { return row.map(function (value) { return '"' + String(value == null ? '' : value).replace(/"/g, '""') + '"'; }).join(','); }).join('\r\n');
+    var link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
+    link.download = 'historial_general_cotizaciones.csv';
+    document.body.appendChild(link); link.click(); setTimeout(function () { document.body.removeChild(link); }, 500);
+  });
+  async function load() {
+    body.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-slate-400">Cargando historial...</td></tr>';
+    try {
+      all = await UN.api('/api/cotizaciones/historial');
+      all.sort(function (a, b) { return String(b.fecha || '').localeCompare(String(a.fecha || '')); });
+      render();
+    } catch (error) {
+      all = [];
+      body.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-red-700">' + esc(error.message || 'No se pudo cargar el historial.') + '</td></tr>';
+      foot.textContent = 'No se pudo cargar el historial.';
+      paintKpis();
+    }
+  }
+  load();
+})();
+</script>
+<script src="/js/transicion.js?v=1.0"></script>
+<script src="/js/pie-empresa.js?v=1.0"></script>
+</body>
+</html>

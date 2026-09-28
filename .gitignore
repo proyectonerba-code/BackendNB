@@ -1,0 +1,9 @@
+node_modules/
+NERBA Back/data/*.json
+!NERBA Back/data/.gitkeep
+NERBA Back/data/_respaldo-*/
+NERBA Front/_respaldo/
+*.code-workspace
+.env
+.DS_Store
+Thumbs.db

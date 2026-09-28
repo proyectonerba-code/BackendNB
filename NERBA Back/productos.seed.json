@@ -1,0 +1,164 @@
+[
+    {
+        "id":  "cctv-4k",
+        "categoryCode":  "cctv",
+        "category":  "Cámaras de Vigilancia CCTV",
+        "title":  "Kits CCTV 4K con Reconocimiento Facial IA",
+        "description":  "Vigilancia continua con analítica avanzada para detección de personas y vehículos en alta definición, visión nocturna a color y conectividad remota.",
+        "images":  [
+                       "https://lh3.googleusercontent.com/aida-public/AB6AXuBA3BXAzqqHsUarDzXxGmyITzgx3wgoQT8ODqKyEGPTZ55FOg7GgryRnNe2Vp-VngtFJoB7JIgY7eML0OoR2qdeKX3s2_XaeJPsIijYjDycKkDfMNHdxZuHSqfw5UFpDpR9pMm_qrIg4JY5U41MALvnTZ_EguZCJcGCdoBrw84kKPhNgMjZWOov7h_VWSvCl-s_LgguICAKD3-w0_5pm2xWMPWBgVV-IV56OiNAkfXBRMAcMNA9WWawVw",
+                       "https://lh3.googleusercontent.com/aida-public/AB6AXuAo9uM_diD9vSV5PKiJqSNlnJhEH911F6nZYweDMW6SNQOQGqfHmIJbl71ol1gDe335XgYUsCVa190b-r1k25Gq4QeJfcRfDecFlTIrYPOwUfwx1V8NsbR6dBbqBAwt_vFVv6dF8Kud7vx1R3o2MwEf2cTpcoHG1XfIQePbisCO00kglCGFrHIc74kKpXsDbMsPD-RopvQitRMVjsU_w6SLR0LYtzjSMGOK7Cp1ZR5NYicZaIznBj8dng",
+                       "https://lh3.googleusercontent.com/aida-public/AB6AXuAHrClinT_hfukmtJ3eXH7R0fZht03uPuF6k74AATPSROCj0JE3OXkYxD6Rn9X2g6IYsuqzbjzrKa6VMYDKMG91Dp5qtQuGy6EPnzYt8exHU-DV-FXsYsM_3y4KOIlUMT10W5fEWJ4AfoemOjADDfPUpobs3aHLpTkP2VvpfiJzsnQqrP47uKrawWCj1kHkyIX5BGk2XcK842zrKTa2sZ5IXznNY4uFpfgn5FJHERv1RmwI8Wf8elnCoA"
+                   ],
+        "idealFor":  [
+                         "Entradas principales, recepciones comerciales y residencias con identificación de placas.",
+                         "Negocios y oficinas que buscan supervisión remota continua en alta resolución."
+                     ],
+        "electronico":  false
+    },
+    {
+        "id":  "cerco-iec",
+        "categoryCode":  "cerco",
+        "category":  "Cercos Eléctricos Perimétricos",
+        "title":  "Cerco Eléctrico Certificado (Norma IEC)",
+        "description":  "Barrera disuasiva no letal de alto voltaje regulado bajo certificación internacional IEC 60335-2-76 con sensor de corte o sabotaje y alarma zonal.",
+        "images":  [
+                       "https://lh3.googleusercontent.com/aida-public/AB6AXuApi51Jq_JREXb4efgJ96FBFv5IAp317YgeVrOLR0WMbqU8EUsFZDhceklBEJwEVUB5jnDLjJSb6VMfdhEvzxJ_cmIQKBaNADPMnK1l055QXWwYL_wFe5ey5lUneK4zuJYvEso6fz4Jg-8BIgRd7zTpet6Ljc3_vM-LsS9eyCtJPHmDXMsKgA6EQwcrRz4BYjUWSHTD7-onXoSKFKtcPjxpaAQpb0js6L9njorAU74X-3CQGjtnTSt-iw",
+                       "https://lh3.googleusercontent.com/aida-public/AB6AXuAHrClinT_hfukmtJ3eXH7R0fZht03uPuF6k74AATPSROCj0JE3OXkYxD6Rn9X2g6IYsuqzbjzrKa6VMYDKMG91Dp5qtQuGy6EPnzYt8exHU-DV-FXsYsM_3y4KOIlUMT10W5fEWJ4AfoemOjADDfPUpobs3aHLpTkP2VvpfiJzsnQqrP47uKrawWCj1kHkyIX5BGk2XcK842zrKTa2sZ5IXznNY4uFpfgn5FJHERv1RmwI8Wf8elnCoA",
+                       "https://lh3.googleusercontent.com/aida-public/AB6AXuAo9uM_diD9vSV5PKiJqSNlnJhEH911F6nZYweDMW6SNQOQGqfHmIJbl71ol1gDe335XgYUsCVa190b-r1k25Gq4QeJfcRfDecFlTIrYPOwUfwx1V8NsbR6dBbqBAwt_vFVv6dF8Kud7vx1R3o2MwEf2cTpcoHG1XfIQePbisCO00kglCGFrHIc74kKpXsDbMsPD-RopvQitRMVjsU_w6SLR0LYtzjSMGOK7Cp1ZR5NYicZaIznBj8dng"
+                   ],
+        "idealFor":  [
+                         "Casas, condominios cerrados y predios que buscan disuasión perimetral visible e inmediata.",
+                         "Muros o bardas perimétricas vulnerables a intrusiones externas sin falsas alarmas."
+                     ],
+        "electronico":  false
+    },
+    {
+        "id":  "alarma-wifi4g",
+        "categoryCode":  "alarmas",
+        "category":  "Alarmas Inteligentes",
+        "title":  "Sistema de Alarma con Monitoreo App WiFi/4G",
+        "description":  "Detección de intrusión perimetral e interior con aviso directo a smartphone, sensores de movimiento pet-immune y sirena disuasiva.",
+        "images":  [
+                       "https://lh3.googleusercontent.com/aida-public/AB6AXuAeeTefYorHCljvnjIyEKzdLYnmTQdHLyEZzNCfMpdNIl4wnALyk7Jf9KLyVFBY9O2qx9lXgp10TWIy7UwvOsIzP3tcljeCIy6K0NqBvHEX0wTGvKRH4xRfv-tRg2K6iFfMmnfiraKI3dt3IGFgDm5mVBYL5ugG6GYNb4WZRpAHSmZKqmfCFwB8fGDgT7cEFryFpIiYXx_wP5iHaXnUGTR5n0opfIGSkTwcaKuoUr8h7JGeAdTbCXfOsw",
+                       "https://lh3.googleusercontent.com/aida-public/AB6AXuAHrClinT_hfukmtJ3eXH7R0fZht03uPuF6k74AATPSROCj0JE3OXkYxD6Rn9X2g6IYsuqzbjzrKa6VMYDKMG91Dp5qtQuGy6EPnzYt8exHU-DV-FXsYsM_3y4KOIlUMT10W5fEWJ4AfoemOjADDfPUpobs3aHLpTkP2VvpfiJzsnQqrP47uKrawWCj1kHkyIX5BGk2XcK842zrKTa2sZ5IXznNY4uFpfgn5FJHERv1RmwI8Wf8elnCoA",
+                       "https://lh3.googleusercontent.com/aida-public/AB6AXuBA3BXAzqqHsUarDzXxGmyITzgx3wgoQT8ODqKyEGPTZ55FOg7GgryRnNe2Vp-VngtFJoB7JIgY7eML0OoR2qdeKX3s2_XaeJPsIijYjDycKkDfMNHdxZuHSqfw5UFpDpR9pMm_qrIg4JY5U41MALvnTZ_EguZCJcGCdoBrw84kKPhNgMjZWOov7h_VWSvCl-s_LgguICAKD3-w0_5pm2xWMPWBgVV-IV56OiNAkfXBRMAcMNA9WWawVw"
+                   ],
+        "idealFor":  [
+                         "Casas, departamentos y comercios que buscan protección con notificación en tiempo real.",
+                         "Espacios con mascotas y zonas que requieran respaldo de transmisión dual WiFi y 4G LTE."
+                     ],
+        "electronico":  false
+    },
+    {
+        "id":  "portones-motor",
+        "categoryCode":  "portones",
+        "category":  "Automatización de Portones",
+        "title":  "Motores para Portones Corredizos y Levadizos",
+        "description":  "Acceso vehicular automatizado de alta resistencia con apertura rápida, fotocélula de seguridad anti-aplastamiento y control remoto sincronizado.",
+        "images":  [
+                       "https://lh3.googleusercontent.com/aida-public/AB6AXuD9J5uev0xiqLRMoMsip-nTuNTPDs-kvGKs_ojcyVZoX7WrA0KiAnONEm8B1sm9MjrmySAZPw2yDKlvWhQb1XwGldwemwq5P_eKmF0wn_ZyPmfgOyUJocd28RRepK1_eaT-dwSus_wvupu2Bd-kXIoUyqItMCAK_2LtrMn0i-rIPtwpxYfhH7P1vQCQwJITd4_ESwBRJSnocLGRiJ5NMlJbWNeUNo-i6qdTtL7dCSqMfdzRddc4PDlAWA",
+                       "https://lh3.googleusercontent.com/aida-public/AB6AXuApi51Jq_JREXb4efgJ96FBFv5IAp317YgeVrOLR0WMbqU8EUsFZDhceklBEJwEVUB5jnDLjJSb6VMfdhEvzxJ_cmIQKBaNADPMnK1l055QXWwYL_wFe5ey5lUneK4zuJYvEso6fz4Jg-8BIgRd7zTpet6Ljc3_vM-LsS9eyCtJPHmDXMsKgA6EQwcrRz4BYjUWSHTD7-onXoSKFKtcPjxpaAQpb0js6L9njorAU74X-3CQGjtnTSt-iw",
+                       "https://lh3.googleusercontent.com/aida-public/AB6AXuBA3BXAzqqHsUarDzXxGmyITzgx3wgoQT8ODqKyEGPTZ55FOg7GgryRnNe2Vp-VngtFJoB7JIgY7eML0OoR2qdeKX3s2_XaeJPsIijYjDycKkDfMNHdxZuHSqfw5UFpDpR9pMm_qrIg4JY5U41MALvnTZ_EguZCJcGCdoBrw84kKPhNgMjZWOov7h_VWSvCl-s_LgguICAKD3-w0_5pm2xWMPWBgVV-IV56OiNAkfXBRMAcMNA9WWawVw"
+                   ],
+        "idealFor":  [
+                         "Cocheras residenciales, condominios y accesos que requieren apertura sin descender del auto.",
+                         "Propietarios que buscan máxima comodidad, cierre temporizado seguro y uso continuo."
+                     ],
+        "electronico":  false
+    },
+    {
+        "id":  "ptz-360",
+        "categoryCode":  "cctv",
+        "category":  "Cámaras de Vigilancia CCTV",
+        "title":  "Cámaras PTZ 360° para Fincas e Industrias",
+        "description":  "Vigilancia perimetral en largas distancias con seguimiento automático (Auto-Tracking) de objetivos, zoom óptico de 30x y visión nocturna de largo alcance.",
+        "images":  [
+                       "https://lh3.googleusercontent.com/aida-public/AB6AXuAo9uM_diD9vSV5PKiJqSNlnJhEH911F6nZYweDMW6SNQOQGqfHmIJbl71ol1gDe335XgYUsCVa190b-r1k25Gq4QeJfcRfDecFlTIrYPOwUfwx1V8NsbR6dBbqBAwt_vFVv6dF8Kud7vx1R3o2MwEf2cTpcoHG1XfIQePbisCO00kglCGFrHIc74kKpXsDbMsPD-RopvQitRMVjsU_w6SLR0LYtzjSMGOK7Cp1ZR5NYicZaIznBj8dng",
+                       "https://lh3.googleusercontent.com/aida-public/AB6AXuBA3BXAzqqHsUarDzXxGmyITzgx3wgoQT8ODqKyEGPTZ55FOg7GgryRnNe2Vp-VngtFJoB7JIgY7eML0OoR2qdeKX3s2_XaeJPsIijYjDycKkDfMNHdxZuHSqfw5UFpDpR9pMm_qrIg4JY5U41MALvnTZ_EguZCJcGCdoBrw84kKPhNgMjZWOov7h_VWSvCl-s_LgguICAKD3-w0_5pm2xWMPWBgVV-IV56OiNAkfXBRMAcMNA9WWawVw",
+                       "https://lh3.googleusercontent.com/aida-public/AB6AXuApi51Jq_JREXb4efgJ96FBFv5IAp317YgeVrOLR0WMbqU8EUsFZDhceklBEJwEVUB5jnDLjJSb6VMfdhEvzxJ_cmIQKBaNADPMnK1l055QXWwYL_wFe5ey5lUneK4zuJYvEso6fz4Jg-8BIgRd7zTpet6Ljc3_vM-LsS9eyCtJPHmDXMsKgA6EQwcrRz4BYjUWSHTD7-onXoSKFKtcPjxpaAQpb0js6L9njorAU74X-3CQGjtnTSt-iw"
+                   ],
+        "idealFor":  [
+                         "Fincas agrícolas, bodegas, terrenos amplios y estacionamientos con cobertura panorámica.",
+                         "Predios industriales que requieren seguimiento dinámico de personas y vehículos."
+                     ],
+        "electronico":  false
+    },
+    {
+        "id":  "integracion-cerco-alarma",
+        "categoryCode":  "cerco",
+        "category":  "Cercos Eléctricos Perimétricos",
+        "title":  "Integración Perimetral de Cerco y Alarma Unificada",
+        "description":  "Conexión inteligente del cerco eléctrico perimetral directo a la central de alarmas para activar sirenas zonales y notificación inmediata en panel y app móvil.",
+        "images":  [
+                       "https://lh3.googleusercontent.com/aida-public/AB6AXuAHrClinT_hfukmtJ3eXH7R0fZht03uPuF6k74AATPSROCj0JE3OXkYxD6Rn9X2g6IYsuqzbjzrKa6VMYDKMG91Dp5qtQuGy6EPnzYt8exHU-DV-FXsYsM_3y4KOIlUMT10W5fEWJ4AfoemOjADDfPUpobs3aHLpTkP2VvpfiJzsnQqrP47uKrawWCj1kHkyIX5BGk2XcK842zrKTa2sZ5IXznNY4uFpfgn5FJHERv1RmwI8Wf8elnCoA",
+                       "https://lh3.googleusercontent.com/aida-public/AB6AXuApi51Jq_JREXb4efgJ96FBFv5IAp317YgeVrOLR0WMbqU8EUsFZDhceklBEJwEVUB5jnDLjJSb6VMfdhEvzxJ_cmIQKBaNADPMnK1l055QXWwYL_wFe5ey5lUneK4zuJYvEso6fz4Jg-8BIgRd7zTpet6Ljc3_vM-LsS9eyCtJPHmDXMsKgA6EQwcrRz4BYjUWSHTD7-onXoSKFKtcPjxpaAQpb0js6L9njorAU74X-3CQGjtnTSt-iw",
+                       "https://lh3.googleusercontent.com/aida-public/AB6AXuAeeTefYorHCljvnjIyEKzdLYnmTQdHLyEZzNCfMpdNIl4wnALyk7Jf9KLyVFBY9O2qx9lXgp10TWIy7UwvOsIzP3tcljeCIy6K0NqBvHEX0wTGvKRH4xRfv-tRg2K6iFfMmnfiraKI3dt3IGFgDm5mVBYL5ugG6GYNb4WZRpAHSmZKqmfCFwB8fGDgT7cEFryFpIiYXx_wP5iHaXnUGTR5n0opfIGSkTwcaKuoUr8h7JGeAdTbCXfOsw"
+                   ],
+        "idealFor":  [
+                         "Empresas, bodegas y residencias de alto nivel que requieren alerta instantánea ante corte o intrusión.",
+                         "Propiedades que ya cuentan o integrarán una central comunitaria con sirena de alta potencia."
+                     ],
+        "electronico":  false
+    },
+    {
+        "id":  "placas-iot",
+        "title":  "Placa Controladora IoT de Telemetría Segura",
+        "description":  "Placa embebida con procesador criptográfico, bus RS-485 y terminales para integración en tiempo real con centrales de monitoreo.",
+        "idealFor":  [
+                         "Integración con centrales de alarma y nodos remotos",
+                         "Automatización de señales perimetrales y control de relés"
+                     ],
+        "images":  [
+                       "https://lh3.googleusercontent.com/aida/AEtjO1W2DLylqDGIpU1aW6EyFQ3fDZDAsHlEgZy5E_ZgGNrxwGpGov7go3JK7HIOTMx_1Dk_1GmPLd8N-k858r7A4kDBsom109zBREancG2vgwOW1901rqKunKPOCSnknsiaZ_FMllLD18sov8DVqTjHpGjLy1BFuN563wQnMo3TqQG0Jpu4hnFgu6g-kNxYa9eIBuk9ko5q3qFGGrbQz_Pv0diKvwaKEI_pzArXlZRwpwmlTxwD9mfkfkSzu0o"
+                   ],
+        "category":  "Placas \u0026 Controladoras IoT",
+        "categoryCode":  "placas",
+        "electronico":  true
+    },
+    {
+        "id":  "potencia-ind",
+        "title":  "Módulo de Potencia y Conmutación Industrial",
+        "description":  "Módulos de potencia para conmutación y respaldo de cargas críticas, con protección térmica y monitoreo de consumo.",
+        "idealFor":  [
+                         "Respaldo de cargas críticas y tableros de distribución",
+                         "Automatización industrial con monitoreo de consumo"
+                     ],
+        "images":  [
+                       "https://lh3.googleusercontent.com/aida/AEtjO1Uut9wvbUg9emljm4z98wTb2L8z0n-yEvwbGQ-mtL3FiACOmBZC6id3vGQfF6CFBG32ACtk-HEVg4fUzMUljZcy-xczGGZ3Ajm54wJAA_muBjBAc-r2H-lV05l5C-Oir_OVnIXd9kmoHDH9TwSoPXZB89oyng2VQCkxb3usc4Utg3TsEEdGXNAsxkd3pcEjyT_3JKXYxOqpyou5NXXFQWGdx1p_GZb78NqB1kwY2xgIxSG4HGqsQ6gqf7GJ"
+                   ],
+        "category":  "Módulos de Potencia \u0026 Conmutación Industrial",
+        "categoryCode":  "potencia",
+        "electronico":  true
+    },
+    {
+        "id":  "sensores-tele",
+        "title":  "Sensor Perimetral y Telemando IoT",
+        "description":  "Sensores ópticos y de telemando para detección perimetral con alertas en tiempo real y bajo consumo energético.",
+        "idealFor":  [
+                         "Detección temprana en perímetros extensos",
+                         "Telemetría de portones, accesos y zonas remotas"
+                     ],
+        "images":  [
+                       "https://lh3.googleusercontent.com/aida/AEtjO1WrBs3JhS2odqST5DWKLSjPXJ9H7oiUttAQMHxGqFvQZqrYqPOGdoYvFqEs2m87TV9RhLSHJGsjdbwyjQoNAmj2mJjsLOmxc6kMr8p_3uNVT9jLkCjl7WIqgJvl-q3gZoe-KIyEkbcJLKybNWGD4Rp3CfOja84ImvslhEXFB7trQNB_s0TKQ6XU3o9BHYgZ3rqvM08QhhrD0_eTzRA5nLF7vzSu2SqmnrIU11bbQTPjJ3wA1OiVoNDuY4w"
+                   ],
+        "category":  "Sensores Ópticos \u0026 Telemando Perimetral",
+        "categoryCode":  "sensores",
+        "electronico":  true
+    },
+    {
+        "id":  "energizador-iec",
+        "title":  "Energizador de Alta Tensión Homologado IEC",
+        "description":  "Energizadores certificados para cercos eléctricos, con pulsos regulados y monitoreo de tensión por zonas.",
+        "idealFor":  [
+                         "Cercos eléctricos perimetrales de alta disuasión",
+                         "Instalaciones que exigen certificación IEC"
+                     ],
+        "images":  [
+                       "https://lh3.googleusercontent.com/aida/AEtjO1UnYZnoGd7zvpYBAVDtxiPezVcrA6CbM04Gxmdh8LUdcfZzMUTsuAtf62M3S2ZWCno-tVmJ339vtfeo7OwBeSPfQOIsPPYf7NRfn_MjInvKKGhGbGLKU-wGVqn-lwcOGEEarWZjsHjmOLjQQs9F8mSnUnmpM7Kp1EWQmg9GKRU2po8FeeeTvgIEB9qGx0fwV4s_pxSLodO57EyJRYBXm2cghvJ5-vefcPpzAg8_2uFMsw19qF50221a0IMW"
+                   ],
+        "category":  "Energizadores de Alta Tensión Homologados IEC",
+        "categoryCode":  "energizadores",
+        "electronico":  true
+    }
+]

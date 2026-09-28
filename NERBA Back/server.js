@@ -1,0 +1,1184 @@
+/**
+ * Grupo NERBA HIDALGO - Backend en JavaScript (Node.js, sin dependencias).
+ * Sirve la API REST (/api/*) y los archivos del frontend en el mismo puerto.
+ *
+ * Uso:
+ *   node server.js [puerto]
+ * O doble clic a run.bat
+ */
+const http = require('http');
+const https = require('https');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { URL } = require('url');
+
+const PORT = parseInt(process.env.PORT || process.argv[2] || '8080', 10);
+
+// Carpeta del frontend: Railway usa FRONT_DIR; local usa carpeta hermana.
+const CANDIDATES = [
+  process.env.FRONT_DIR || '',
+  path.resolve(__dirname, '../NERBA Front'),
+].filter(Boolean);
+const FRONT_DIR = CANDIDATES.find((p) => { try { return fs.existsSync(p); } catch { return false; } }) || path.resolve(__dirname, '../NERBA Front');
+const FRONTEND_URL = String(process.env.FRONTEND_URL || '').trim().replace(/\/$/, '');
+const SEED_DEMO = process.env.SEED_DEMO !== '0';
+const DATA_DIR = path.join(__dirname, 'data');
+fs.mkdirSync(DATA_DIR, { recursive: true });
+
+const usersFile = path.join(DATA_DIR, 'users.json');
+const quotesFile = path.join(DATA_DIR, 'cotizaciones.json');
+const sessionsFile = path.join(DATA_DIR, 'sesiones.json');
+
+// ---------- estado en memoria + persistencia ----------
+let users = {};      // email -> { nombre, email, telefono, passHash, direccion, rol, createdAt }
+let sessions = {};   // token -> { email, expiresAt }
+let quotes = {};     // folio -> cotizacion
+let folioSeq = 8850;
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || '').trim();
+const GOOGLE_ALLOWED_DOMAIN = String(process.env.GOOGLE_ALLOWED_DOMAIN || '').trim().toLowerCase().replace(/^@/, '');
+
+function loadJSON(file, fallback) {
+  try {
+    if (fs.existsSync(file)) {
+      // Sin esto, un BOM (PowerShell/Excel al editar) rompe el parseo y la
+      // siguiente escritura vaciaría el archivo.
+      const raw = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '');
+      return JSON.parse(raw);
+    }
+  } catch (e) { console.log('Aviso cargando ' + file + ': ' + e.message); }
+  return fallback;
+}
+function saveJSON(file, data) {
+  fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
+}
+
+users = loadJSON(usersFile, {});
+// Las sesiones previas del demo no incluían expiración. Se invalidan al actualizar
+// para que ningún token antiguo quede activo indefinidamente.
+const storedSessions = loadJSON(sessionsFile, {});
+sessions = Object.fromEntries(Object.entries(storedSessions).filter(([, s]) =>
+  s && typeof s.email === 'string' && Number(s.expiresAt) > Date.now()
+));
+if (Object.keys(sessions).length !== Object.keys(storedSessions).length) persistSessions();
+const quotesArr = loadJSON(quotesFile, []);
+let migDemo = false;
+for (const q of quotesArr) {
+  if (String(q.email || '').toLowerCase() === 'demo@nerba.mx' && q.demo !== true) { q.demo = true; migDemo = true; }
+  quotes[q.folio] = q;
+  const m = /^COT-(\d+)-/.exec(q.folio || '');
+  if (m && parseInt(m[1], 10) >= folioSeq) folioSeq = parseInt(m[1], 10) + 1;
+}
+// Migración: el área se deriva del tipo (las electrónicas viejas entran a su zona).
+let migArea = false;
+for (const q of Object.values(quotes)) {
+  let want = 'GENERAL';
+  if (q.tipoInmueble === 'Proyecto Especial') want = 'PROYECTOS_ESPECIALES';
+  else if (q.tipoInmueble === 'Productos Electrónicos') want = 'PRODUCTOS_ELECTRONICOS';
+  if (!q.area || (want !== 'GENERAL' && q.area !== want)) { q.area = want; migArea = true; }
+}
+if (migArea || migDemo) persistQuotes();
+
+function seedDemo() {
+  quotes['COT-8849-2024'] = {
+    folio: 'COT-8849-2024', fecha: '2024-11-28', email: 'demo@nerba.mx', demo: true,
+    nombre: 'Ing. Carlos Mendoza', telefono: '55 1234 5678', tipoInmueble: 'Empresa',
+    direccion: 'Av. Industria 450, CDMX', producto: 'Kit CCTV 8 Camaras 4K + Cerco 100m',
+    descripcion: 'Sistema perimetral corporativo con NVR PoE y respaldo 2TB.',
+    subtotal: 34999, instalacion: 6300, iva: 6607.84, total: 47906.84,
+    estado: 'APROBADA', validez: '2024-12-13',
+  };
+  quotes['COT-7621-2024'] = {
+    folio: 'COT-7621-2024', fecha: '2024-10-15', email: 'demo@nerba.mx', demo: true,
+    nombre: 'Ing. Carlos Mendoza', telefono: '55 1234 5678', tipoInmueble: 'Casa',
+    direccion: 'Calle Robles 12, Toluca', producto: 'Kit CCTV 4 Camaras Full HD',
+    descripcion: 'Residencial con vision nocturna y app movil.',
+    subtotal: 18999, instalacion: 3420, iva: 3587.04, total: 26006.04,
+    estado: 'PENDIENTE', validez: '2024-10-30',
+  };
+  persistQuotes();
+}
+if (Object.keys(quotes).length === 0) seedDemo();
+
+// Cuentas de prueba para chequeos en local (solo se crean si no existen).
+// En producción define SEED_DEMO=0 para no crearlas.
+function seedUsers() {
+  if (!SEED_DEMO) { console.log('SEED_DEMO=0: no se crean cuentas demo.'); return; }
+  const demo = [
+    { nombre: 'Cliente Demo', email: 'cliente@nerba.mx', password: 'cliente123', rol: 'CLIENTE' },
+    { nombre: 'Admin Grupo NERBA HIDALGO', email: 'admin@nerba.mx', password: 'admin123', rol: 'ADMIN' },
+    { nombre: 'SuperAdmin Grupo NERBA HIDALGO', email: 'superadmin@nerba.mx', password: 'super123', rol: 'SUPERADMIN' },
+    { nombre: 'Proyectos Especiales', email: 'proyectos@nerba.mx', password: 'especial123', rol: 'PROYECTOS_ESPECIALES' },
+    { nombre: 'Encargado Electrónicos', email: 'electronica@nerba.mx', password: 'electronica123', rol: 'PRODUCTOS_ELECTRONICOS' },
+  ];
+  let changed = false;
+  for (const d of demo) {
+    if (!users[d.email]) {
+      users[d.email] = { nombre: d.nombre, email: d.email, passHash: hashPassword(d.password), rol: d.rol, activo: true, lastLogin: null, createdAt: new Date().toISOString().slice(0, 10) };
+      changed = true;
+    } else {
+      if (users[d.email].passHash === sha256(d.password)) {
+        // Actualiza únicamente las credenciales demo que todavía usan el hash heredado.
+        users[d.email].passHash = hashPassword(d.password);
+        changed = true;
+      }
+      // Migración: campos del rol SuperAdmin en cuentas existentes.
+      if (users[d.email].activo === undefined) { users[d.email].activo = true; changed = true; }
+      if (users[d.email].lastLogin === undefined) { users[d.email].lastLogin = null; changed = true; }
+    }
+  }
+  if (changed) persistUsers();
+}
+seedUsers();
+
+function persistUsers() { saveJSON(usersFile, users); }
+function persistSessions() { saveJSON(sessionsFile, sessions); }
+function persistQuotes() { saveJSON(quotesFile, Object.values(quotes)); }
+
+// ---------- bitacora de auditoria (solo SUPERADMIN la consulta) ----------
+const auditFile = path.join(DATA_DIR, 'auditoria.json');
+function loadAudit() {
+  try {
+    if (fs.existsSync(auditFile)) {
+      const d = JSON.parse(fs.readFileSync(auditFile, 'utf8'));
+      if (d && Array.isArray(d.items)) return d;
+    }
+  } catch {}
+  return { items: [], lastHash: 'GENESIS' };
+}
+function persistAudit(a) {
+  if (a.items.length > 2000) a.items = a.items.slice(-2000);
+  saveJSON(auditFile, a);
+}
+function clientIp(req) {
+  const fwd = req.headers['x-forwarded-for'] || '';
+  const ip = String(fwd).split(',')[0].trim() || (req.socket && req.socket.remoteAddress) || '';
+  return ip.replace(/^::ffff:/, '').slice(0, 45);
+}
+function logAudit(req, info) {
+  try {
+    const a = loadAudit();
+    const token = getToken(req);
+    const u = userByToken(token);
+    const prev = a.lastHash || 'GENESIS';
+    const e = {
+      id: 'EVT-' + Date.now().toString(36).toUpperCase() + Math.floor(Math.random() * 1296).toString(36).toUpperCase(),
+      fecha: new Date().toISOString().slice(0, 10),
+      hora: new Date().toTimeString().slice(0, 8),
+      modulo: String((info && info.modulo) || 'sistema'),
+      evento: String((info && info.evento) || ''),
+      detalle: String((info && info.detalle) || '').slice(0, 500),
+      folio: (info && info.folio) || '',
+      usuario: u ? u.email : String((info && info.usuario) || '—'),
+      nombre: u ? u.nombre : '',
+      rol: u ? u.rol : '',
+      ip: clientIp(req),
+      agente: String(req.headers['user-agent'] || '').slice(0, 160),
+    };
+    e.hash = crypto.createHash('sha256').update(prev + JSON.stringify([e.id, e.fecha, e.hora, e.modulo, e.evento, e.usuario, e.folio])).digest('hex').slice(0, 32);
+    a.items.push(e);
+    a.lastHash = e.hash;
+    persistAudit(a);
+  } catch {}
+}
+
+// ---------- catalogo ----------
+const CATALOGO = [
+  { id: 'cctv-kit-4ch', nombre: 'Kit CCTV 4 Camaras Full HD', categoria: 'cctv', descripcion: 'Kit de 4 camaras 1080p + DVR 1TB + vision nocturna 30m + app movil.', precio: 18999, precioAntes: 19999, rating: '4.9', resenas: 124, imagen: 'https://images.unsplash.com/photo-1557597774-9d273605dfa9?w=800&q=80', badge: 'Instalacion incluida' },
+  { id: 'cctv-kit-8ch', nombre: 'Kit CCTV 8 Camaras 4K', categoria: 'cctv', descripcion: '8 camaras 4K + NVR PoE + disco 2TB + deteccion de personas.', precio: 34999, precioAntes: 38999, rating: '4.8', resenas: 86, imagen: 'https://images.unsplash.com/photo-1557862921-37829c790f19?w=800&q=80', badge: 'Instalacion incluida' },
+  { id: 'cerco-100m', nombre: 'Cerco Electrico 100m lineales', categoria: 'cerco', descripcion: 'Energizador 10,000V + 3 lineas + sirena + senalizacion + instalacion.', precio: 14500, precioAntes: 16500, rating: '4.9', resenas: 203, imagen: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=800&q=80', badge: 'Instalacion incluida' },
+  { id: 'alarma-wifi', nombre: 'Alarma WiFi + Sensores', categoria: 'alarmas', descripcion: 'Panel WiFi + 4 sensores puerta/ventana + 2 PIR + 2 controles + sirena.', precio: 8900, precioAntes: 10900, rating: '4.7', resenas: 158, imagen: 'https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=800&q=80', badge: 'Instalacion incluida' },
+  { id: 'porton-automatico', nombre: 'Automatizacion de Porton', categoria: 'portones', descripcion: 'Motor 600kg + 2 controles + fotoceldas + instalacion y garantia 2 anos.', precio: 16900, precioAntes: 18900, rating: '4.8', resenas: 97, imagen: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&q=80', badge: 'Instalacion incluida' },
+  { id: 'videoportero', nombre: 'Videoportero IP + Chapa', categoria: 'portones', descripcion: 'Videoportero 7" + frente de calle IP + chapa electrica + app.', precio: 7500, precioAntes: 8900, rating: '4.6', resenas: 74, imagen: 'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=800&q=80', badge: 'Instalacion incluida' },
+  { id: 'biometrico', nombre: 'Control Biometrico Huella+RFID', categoria: 'alarmas', descripcion: 'Terminal huella + 1000 usuarios + torniquete opcional + software.', precio: 12300, precioAntes: 14200, rating: '4.7', resenas: 61, imagen: 'https://images.unsplash.com/photo-1558002038-1055907df827?w=800&q=80', badge: 'Instalacion incluida' },
+  { id: 'mantenimiento', nombre: 'Poliza Mantenimiento Anual', categoria: 'cctv', descripcion: '4 visitas preventivas + correctivo prioritario + refacciones -15%.', precio: 6800, precioAntes: 8000, rating: '5.0', resenas: 45, imagen: 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=800&q=80', badge: 'Instalacion incluida' },
+];
+
+// ---------- utilidades ----------
+function sha256(s) { return crypto.createHash('sha256').update(String(s)).digest('hex'); }
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const key = crypto.scryptSync(String(password), salt, 64).toString('hex');
+  return `scrypt$${salt}$${key}`;
+}
+function verifyPassword(password, stored) {
+  if (typeof stored !== 'string') return false;
+  const parts = stored.split('$');
+  if (parts.length === 3 && parts[0] === 'scrypt') {
+    const expected = Buffer.from(parts[2], 'hex');
+    const actual = crypto.scryptSync(String(password), parts[1], 64);
+    return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+  }
+  // Compatibilidad única con datos de la versión anterior; se actualiza al iniciar sesión.
+  const expected = Buffer.from(sha256(password), 'hex');
+  const legacy = Buffer.from(stored, 'hex');
+  return expected.length === legacy.length && crypto.timingSafeEqual(expected, legacy);
+}
+function verifyGoogleCredential(credential) {
+  return new Promise((resolve, reject) => {
+    if (!GOOGLE_CLIENT_ID) return reject(new Error('Google Sign-In no configurado'));
+    const target = new URL('https://oauth2.googleapis.com/tokeninfo');
+    target.searchParams.set('id_token', String(credential || ''));
+    const request = https.get(target, { headers: { Accept: 'application/json' } }, (response) => {
+      let raw = '';
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => { if (raw.length < 100000) raw += chunk; });
+      response.on('end', () => {
+        let data;
+        try { data = JSON.parse(raw); } catch (_) { return reject(new Error('Respuesta inválida de Google')); }
+        const email = String(data.email || '').trim().toLowerCase();
+        const verified = data.email_verified === true || data.email_verified === 'true';
+        const validIssuer = data.iss === 'accounts.google.com' || data.iss === 'https://accounts.google.com';
+        const validAudience = data.aud === GOOGLE_CLIENT_ID && (!data.azp || data.azp === GOOGLE_CLIENT_ID);
+        const validExpiry = Number(data.exp) > Math.floor(Date.now() / 1000);
+        const validDomain = !GOOGLE_ALLOWED_DOMAIN || email.endsWith('@' + GOOGLE_ALLOWED_DOMAIN);
+        if (response.statusCode !== 200 || !email || !data.sub || !verified || !validIssuer || !validAudience || !validExpiry || !validDomain) {
+          return reject(new Error('Credencial de Google inválida'));
+        }
+        const fullName = String(data.name || [data.given_name, data.family_name].filter(Boolean).join(' ') || email.split('@')[0]).trim().slice(0, 120);
+        resolve({ email, nombre: fullName, sub: String(data.sub) });
+      });
+    });
+    request.setTimeout(8000, () => request.destroy(new Error('Google no respondió')));
+    request.on('error', reject);
+  });
+}
+
+function createSession(email) {
+  const token = crypto.randomBytes(32).toString('hex');
+  sessions[token] = { email, expiresAt: Date.now() + SESSION_TTL_MS };
+  persistSessions();
+  return token;
+}
+function publicUser(u) {
+  const last = u.lastLogin ? { fecha: u.lastLogin.fecha || '', hora: u.lastLogin.hora || '' } : null;
+  return { nombre: u.nombre, email: u.email, telefono: u.telefono || '', telefonoSec: u.telefonoSec || '', direccion: u.direccion || '', empresa: u.empresa || '', rol: u.rol, activo: u.activo !== false, tema: u.tema === 'dark' ? 'dark' : 'light', lastLogin: last, createdAt: u.createdAt || '' };
+}
+function publicAudit(e) {
+  return {
+    id: e.id || '', fecha: e.fecha || '', hora: e.hora || '', modulo: e.modulo || '', evento: e.evento || '',
+    detalle: e.detalle || '', folio: e.folio || '', usuario: e.usuario || '', nombre: e.nombre || '', rol: e.rol || '',
+  };
+}
+function corsOrigin(req) {
+  if (!FRONTEND_URL) return '*';
+  const o = String(req.headers.origin || '');
+  // Allowlist simple: solo el FRONTEND_URL configurado; sin Origin (curl/same-origin) se permite.
+  if (!o) return FRONTEND_URL;
+  return o === FRONTEND_URL ? o : FRONTEND_URL;
+}
+function sendJSON(res, status, obj, req) {
+  const body = JSON.stringify(obj);
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Access-Control-Allow-Origin': req ? corsOrigin(req) : (FRONTEND_URL || '*'),
+    'Vary': 'Origin',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
+    'X-Frame-Options': 'DENY',
+  });
+  res.end(body);
+}
+function normalizeSearch(value) {
+  return String(value == null ? '' : value)
+    .normalize('NFKD')
+    .replace(/ß/g, 'ss')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+function compactSearch(value) { return normalizeSearch(value).replace(/\s+/g, ''); }
+function matchesSearch(value, query) {
+  const needle = normalizeSearch(query);
+  if (!needle) return true;
+  const hay = normalizeSearch(value);
+  const compactHay = hay.replace(/\s+/g, '');
+  if (hay.includes(needle) || compactHay.includes(compactSearch(needle))) return true;
+  return needle.split(/\s+/).filter(Boolean).every((token) => hay.includes(token) || compactHay.includes(compactSearch(token)));
+}
+const MAX_BODY_BYTES = 3 * 1024 * 1024; // 3MB: suficiente para fotos comprimidas, frena DoS
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    let tooBig = false;
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > MAX_BODY_BYTES) { tooBig = true; return; }
+      chunks.push(c);
+    });
+    req.on('end', () => {
+      if (tooBig) return reject(Object.assign(new Error('Payload muy grande'), { code: 413 }));
+      resolve(Buffer.concat(chunks).toString('utf8'));
+    });
+    req.on('error', reject);
+  });
+}
+// Rate-limit mínimo en memoria para login/registro/contacto/google (anti fuerza bruta)
+const __rl = new Map(); // ip -> { n, reset }
+function rateLimit(req, max = 30, windowMs = 60000) {
+  const ip = clientIp(req) || 'unknown';
+  const now = Date.now();
+  const e = __rl.get(ip);
+  if (!e || now > e.reset) { __rl.set(ip, { n: 1, reset: now + windowMs }); return true; }
+  e.n++;
+  if (e.n > max) return false;
+  return true;
+}
+function getToken(req) {
+  const auth = req.headers['authorization'] || '';
+  if (auth.startsWith('Bearer ')) return auth.slice(7).trim();
+  // NOTA: ya no se acepta ?token= por seguridad (quedaba en logs/historial/referer).
+  return null;
+}
+function userByToken(token) {
+  const session = token && sessions[token];
+  if (!session || Number(session.expiresAt) <= Date.now()) {
+    if (token && sessions[token]) { delete sessions[token]; persistSessions(); }
+    return null;
+  }
+  const u = users[session.email.toLowerCase()] || null;
+  if (u && u.activo === false) return null;
+  return u;
+}
+function isStaff(user) { return user && (user.rol === 'ADMIN' || user.rol === 'SUPERADMIN' || user.rol === 'PRODUCTOS_ELECTRONICOS'); }
+// Alcance de cotizaciones por rol: SUPERADMIN todo, ADMIN todo menos PE,
+// PROYECTOS_ESPECIALES solo su área, PRODUCTOS_ELECTRONICOS solo la suya,
+// CLIENTE solo las propias. Nada fuera de su zona.
+function quoteScope(u, c) {
+  if (!u || !c) return false;
+  if (u.rol === 'SUPERADMIN') return true;
+  var area = c.area || 'GENERAL';
+  if (u.rol === 'ADMIN') return area !== 'PROYECTOS_ESPECIALES';
+  if (u.rol === 'PROYECTOS_ESPECIALES') return area === 'PROYECTOS_ESPECIALES';
+  if (u.rol === 'PRODUCTOS_ELECTRONICOS') {
+    return area === 'PRODUCTOS_ELECTRONICOS' || c.tipoInmueble === 'Productos Electrónicos';
+  }
+  if (u.rol === 'CLIENTE') return c.demo !== true && !!(c.email && u.email && c.email.toLowerCase() === u.email.toLowerCase());
+  return !!(c.email && u.email && c.email.toLowerCase() === u.email.toLowerCase());
+}
+function canSeeQuoteAudit(u) {
+  return !!(u && (u.rol === 'ADMIN' || u.rol === 'SUPERADMIN' || u.rol === 'PROYECTOS_ESPECIALES'));
+}
+function quoteForUser(c, u) {
+  const out = { ...c };
+  if (!canSeeQuoteAudit(u)) {
+    delete out.estadoHistorial;
+    delete out.estadoActualizadoPor;
+    delete out.estadoActualizadoAt;
+  }
+  return out;
+}
+function recordQuoteState(c, u, anterior, estado) {
+  const now = new Date().toISOString();
+  if (!Array.isArray(c.estadoHistorial)) c.estadoHistorial = [];
+  c.estadoHistorial.push({
+    estado,
+    anterior: anterior || null,
+    usuario: u.email,
+    nombre: u.nombre,
+    rol: u.rol,
+    fecha: now,
+  });
+  if (c.estadoHistorial.length > 50) c.estadoHistorial = c.estadoHistorial.slice(-50);
+  c.estadoActualizadoPor = { email: u.email, nombre: u.nombre, rol: u.rol };
+  c.estadoActualizadoAt = now;
+}
+
+const MIME = {
+  html: 'text/html', css: 'text/css', js: 'text/javascript', json: 'application/json',
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', jfif: 'image/jpeg',
+  avif: 'image/avif', gif: 'image/gif', svg: 'image/svg+xml',
+  ico: 'image/x-icon', woff2: 'font/woff2', woff: 'font/woff',
+  mp4: 'video/mp4', webm: 'video/webm', ogv: 'video/ogg', mov: 'video/quicktime',
+};
+
+// ---------- servidor ----------
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url, 'http://localhost');
+  const pathname = url.pathname;
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, {
+      'Access-Control-Allow-Origin': corsOrigin(req),
+      'Vary': 'Origin',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    });
+    return res.end();
+  }
+
+  // ----- API -----
+  if (pathname === '/api/health') return sendJSON(res, 200, { ok: true, service: 'grupo-nerba-hidalgo', port: PORT }, req);
+  if (pathname === '/api/config') return sendJSON(res, 200, { googleClientId: GOOGLE_CLIENT_ID }, req);
+  if (pathname === '/api/catalogo') return sendJSON(res, 200, CATALOGO, req);
+
+  if (pathname === '/api/register' && req.method === 'POST') {
+    if (!rateLimit(req, 20)) return sendJSON(res, 429, { error: 'Demasiados intentos. Espera un minuto.' }, req);
+    let body = {};
+    try {
+      let rawBody = await readBody(req);
+      try { body = JSON.parse(rawBody); } catch (e) { body = {}; }
+    } catch (e) { if (e && e.code === 413) return sendJSON(res, 413, { error: 'Datos muy grandes' }, req); body = {}; }
+    const nombre = String(body.nombre || '').trim();
+    const email = String(body.email || '').trim().toLowerCase();
+    const password = String(body.password || '');
+    if (!nombre || !email || !password) return sendJSON(res, 400, { error: 'Nombre, email y contrasena son obligatorios' });
+    if (!email.includes('@')) return sendJSON(res, 400, { error: 'Email no valido' });
+    if (password.length < 6) return sendJSON(res, 400, { error: 'La contrasena debe tener al menos 6 caracteres' });
+    if (users[email]) return sendJSON(res, 409, { error: 'Ese correo ya esta registrado. Inicia sesion.' });
+    users[email] = { nombre, email, passHash: hashPassword(password), rol: 'CLIENTE', activo: true, tema: 'light', lastLogin: null, createdAt: new Date().toISOString().slice(0, 10) };
+    persistUsers();
+    logAudit(req, { modulo: 'accesos', evento: 'registro', detalle: nombre, usuario: email });
+    const token = createSession(email);
+    return sendJSON(res, 201, { token, ...publicUser(users[email]) });
+  }
+
+  if (pathname === '/api/login' && req.method === 'POST') {
+    if (!rateLimit(req, 30)) return sendJSON(res, 429, { error: 'Demasiados intentos. Espera un minuto.' }, req);
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch (e) { if (e && e.code === 413) return sendJSON(res, 413, { error: 'Datos muy grandes' }, req); body = {}; }
+    const email = String(body.email || '').trim().toLowerCase();
+    const u = users[email];
+    if (!u || !verifyPassword(body.password || '', u.passHash)) {
+      logAudit(req, { modulo: 'accesos', evento: 'login-fallido', detalle: email, usuario: email });
+      return sendJSON(res, 401, { error: 'Credenciales invalidas' });
+    }
+    if (u.activo === false) {
+      logAudit(req, { modulo: 'accesos', evento: 'login-bloqueado', detalle: email, usuario: email });
+      return sendJSON(res, 403, { error: 'Cuenta desactivada. Contacta al administrador.' });
+    }
+    if (!u.passHash.startsWith('scrypt$')) { u.passHash = hashPassword(body.password || ''); persistUsers(); }
+    u.lastLogin = { fecha: new Date().toISOString().slice(0, 10), hora: new Date().toTimeString().slice(0, 8), ip: clientIp(req) };
+    persistUsers();
+    const token = createSession(email);
+    logAudit(req, { modulo: 'accesos', evento: 'login', detalle: u.nombre + ' (' + u.rol + ')' });
+    return sendJSON(res, 200, { token, ...publicUser(u) });
+  }
+
+  if (pathname === '/api/auth/google' && req.method === 'POST') {
+    if (!rateLimit(req, 30)) return sendJSON(res, 429, { error: 'Demasiados intentos. Espera un minuto.' }, req);
+    if (!GOOGLE_CLIENT_ID) return sendJSON(res, 503, { error: 'Google Sign-In no está configurado en el servidor.' });
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch (e) { if (e && e.code === 413) return sendJSON(res, 413, { error: 'Datos muy grandes' }, req); body = {}; }
+    let profile;
+    try { profile = await verifyGoogleCredential(body.credential); }
+    catch (_) { return sendJSON(res, 401, { error: 'No se pudo validar la cuenta de Google.' }); }
+    let u = users[profile.email];
+    if (u && u.googleSub && u.googleSub !== profile.sub) return sendJSON(res, 409, { error: 'Esta cuenta ya está vinculada a otro acceso de Google.' });
+    if (u && u.activo === false) return sendJSON(res, 403, { error: 'Cuenta desactivada. Contacta al administrador.' });
+    if (!u) {
+      const randomPassword = crypto.randomBytes(24).toString('hex');
+      u = users[profile.email] = { nombre: profile.nombre, email: profile.email, passHash: hashPassword(randomPassword), googleSub: profile.sub, authProvider: 'google', rol: 'CLIENTE', activo: true, tema: 'light', lastLogin: null, createdAt: new Date().toISOString().slice(0, 10) };
+      persistUsers();
+      logAudit(req, { modulo: 'accesos', evento: 'registro', detalle: profile.nombre + ' (Google)', usuario: profile.email });
+    } else if (!u.googleSub) {
+      u.googleSub = profile.sub;
+      u.authProvider = u.authProvider || 'google';
+    }
+    u.lastLogin = { fecha: new Date().toISOString().slice(0, 10), hora: new Date().toTimeString().slice(0, 8), ip: clientIp(req) };
+    persistUsers();
+    const token = createSession(profile.email);
+    logAudit(req, { modulo: 'accesos', evento: 'login', detalle: u.nombre + ' (' + u.rol + ', Google)' });
+    return sendJSON(res, 200, { token, ...publicUser(u) });
+  }
+
+  // ----- logout: invalida la sesion en el servidor -----
+  if (pathname === '/api/logout' && req.method === 'POST') {
+    await readBody(req); // drenar cuerpo: si no se consume, Node puede tumbar el socket
+    const token = getToken(req);
+    if (token && sessions[token]) {
+      delete sessions[token];
+      persistSessions();
+    }
+    return sendJSON(res, 200, { ok: true });
+  }
+
+  if (pathname === '/api/me') {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const u = userByToken(getToken(req));
+    if (!u) return sendJSON(res, 401, { error: 'No autorizado' });
+    if (req.method === 'GET') return sendJSON(res, 200, publicUser(u));
+    if (req.method === 'PUT') {
+      if (body.nombre !== undefined) u.nombre = String(body.nombre).trim().slice(0, 120) || u.nombre;
+      if (body.telefono !== undefined) u.telefono = String(body.telefono).trim().slice(0, 40);
+      if (body.telefonoSec !== undefined) u.telefonoSec = String(body.telefonoSec).trim().slice(0, 40);
+      if (body.direccion !== undefined) u.direccion = String(body.direccion).trim().slice(0, 240);
+      if (body.empresa !== undefined) u.empresa = String(body.empresa).trim().slice(0, 160);
+      if (body.tema === 'dark' || body.tema === 'light') u.tema = body.tema;
+      if (body.newPassword) {
+        if (String(body.newPassword).length < 6) return sendJSON(res, 400, { error: 'La nueva contrasena debe tener al menos 6 caracteres' });
+        if (!verifyPassword(body.currentPassword || '', u.passHash)) return sendJSON(res, 401, { error: 'La contrasena actual es incorrecta' });
+        u.passHash = hashPassword(body.newPassword);
+      }
+      persistUsers();
+      return sendJSON(res, 200, publicUser(u));
+    }
+    return sendJSON(res, 405, { error: 'Metodo no permitido' });
+  }
+
+  if (pathname === '/api/cotizaciones' && req.method === 'GET') {
+    const token = getToken(req);
+    const u = userByToken(token);
+    if (!u) return sendJSON(res, 401, { error: 'Inicia sesion para consultar cotizaciones' });
+    let lista = Object.values(quotes).sort((a, b) => (a.folio < b.folio ? 1 : -1));
+    // Cada rol ve solo su zona (ver quoteScope); el filtro ?email= es solo staff.
+    lista = lista.filter((c) => quoteScope(u, c));
+    const emailFiltro = String(url.searchParams.get('email') || '').trim().toLowerCase();
+    if (emailFiltro && (u.rol === 'ADMIN' || u.rol === 'SUPERADMIN')) {
+      lista = lista.filter((c) => c.email && String(c.email).trim().toLowerCase() === emailFiltro);
+    }
+    return sendJSON(res, 200, lista.map((c) => quoteForUser(c, u)));
+  }
+
+  if (pathname === '/api/cotizaciones/historial' && req.method === 'GET') {
+    const u = userByToken(getToken(req));
+    if (!u || (u.rol !== 'ADMIN' && u.rol !== 'SUPERADMIN')) return sendJSON(res, 403, { error: 'Solo Admin puede consultar el Historial General' });
+    const lista = Object.values(quotes)
+      .filter((c) => quoteScope(u, c))
+      .sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')))
+      .map((c) => quoteForUser(c, u));
+    return sendJSON(res, 200, lista);
+  }
+
+  if (pathname === '/api/cotizaciones' && req.method === 'POST') {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const u = userByToken(getToken(req));
+    if (!u) return sendJSON(res, 401, { error: 'Inicia sesion para cotizar' });
+    const base = parseFloat(body.montoBase) || 12900;
+    const instalacion = Math.round(base * 0.18);
+    const iva = Math.round((base + instalacion) * 0.16);
+    const tipoInmueble = String(body.tipoInmueble || 'Casa');
+    // El area se deriva en servidor (no se confia en el cliente): Proyecto Especial
+    // va unicamente al rol de Proyectos Especiales; Productos Electrónicos,
+    // unicamente al rol de Productos Electrónicos; el resto es GENERAL.
+    const area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
+      : (tipoInmueble === 'Productos Electrónicos' ? 'PRODUCTOS_ELECTRONICOS' : 'GENERAL');
+    const espTipoInfraestructura = String(body.espTipoInfraestructura || '');
+    if (area === 'PROYECTOS_ESPECIALES' && !espTipoInfraestructura) {
+      return sendJSON(res, 400, { error: 'Selecciona el alcance o tipo de infraestructura del proyecto especial' });
+    }
+    const year = new Date().getFullYear();
+    const folio = `COT-${folioSeq++}-${year}`;
+    const c = {
+      folio,
+      fecha: new Date().toISOString().slice(0, 10),
+      email: u.email, nombre: u.nombre,
+      telefono: String(body.telefono || u.telefono || ''),
+      telefonoSec: String(body.telefonoSec || ''),
+      distrito: String(body.distrito || ''),
+      referencia: String(body.referencia || ''),
+      tipoInmueble,
+      espTipoInfraestructura,
+      medidasDescriptivas: String(body.medidasDescriptivas || ''),
+      area,
+      direccion: String(body.direccion || ''),
+      producto: String(body.producto || 'Sistema de seguridad integral'),
+      descripcion: String(body.descripcion || ''),
+      notas: String(body.notas || '').slice(0, 2000),
+      // Artículos sueltos de la cotización: permiten imprimirlos en tabla.
+      items: (Array.isArray(body.items) ? body.items : []).slice(0, 80).map((it) => ({
+        title: String((it && it.title) || '').trim().slice(0, 200),
+        qty: Math.max(1, Math.min(999, parseInt(it && it.qty, 10) || 1)),
+        desc: String((it && it.desc) || '').trim().slice(0, 300),
+      })).filter((it) => it.title),
+      subtotal: base, instalacion, iva, total: base + instalacion + iva,
+      estado: 'PENDIENTE',
+      validez: new Date(Date.now() + 15 * 864e5).toISOString().slice(0, 10),
+    };
+    quotes[folio] = c;
+    persistQuotes();
+    logAudit(req, { modulo: 'cotizaciones', evento: 'alta', detalle: (c.producto || '') + ' para ' + u.email, folio });
+    return sendJSON(res, 201, c);
+  }
+
+  const mFolio = /^\/api\/cotizaciones\/(.+)$/.exec(pathname);
+  if (mFolio && req.method === 'GET') {
+    const u = userByToken(getToken(req));
+    if (!u) return sendJSON(res, 401, { error: 'Inicia sesion para consultar una cotizacion' });
+    const c = quotes[mFolio[1]];
+    if (!c) return sendJSON(res, 404, { error: 'No encontrada' });
+    if (!quoteScope(u, c)) return sendJSON(res, 403, { error: 'No tienes permiso para consultar esta cotizacion' });
+    return sendJSON(res, 200, quoteForUser(c, u));
+  }
+
+  // ----- staff: resumen operativo -----
+  if (pathname === '/api/admin/overview' && req.method === 'GET') {
+    const u = userByToken(getToken(req));
+    if (!u || !isStaff(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
+    let lista = Object.values(quotes);
+    // Cada rol ve su zona: electrónicos solo la suya; admin todo menos PE.
+    if (u.rol === 'PRODUCTOS_ELECTRONICOS') {
+      lista = lista.filter((c) => (c.area || 'GENERAL') === 'PRODUCTOS_ELECTRONICOS' || c.tipoInmueble === 'Productos Electrónicos');
+    } else if (u.rol !== 'SUPERADMIN') {
+      lista = lista.filter((c) => (c.area || 'GENERAL') !== 'PROYECTOS_ESPECIALES');
+    }
+    const total = lista.reduce((s, c) => s + (Number(c.total) || 0), 0);
+    return sendJSON(res, 200, {
+      usuarios: Object.keys(users).length,
+      cotizaciones: lista.length,
+      montoTotal: Math.round(total * 100) / 100,
+      pendientes: lista.filter((c) => c.estado === 'PENDIENTE').length,
+      aprobadas: lista.filter((c) => c.estado === 'APROBADA').length,
+    });
+  }
+
+  // ----- superadmin: usuarios (matriz completa) -----
+  if (pathname === '/api/users' && req.method === 'GET') {
+    const u = userByToken(getToken(req));
+    if (!u || u.rol !== 'SUPERADMIN') return sendJSON(res, 403, { error: 'Solo SUPERADMIN puede consultar usuarios' });
+    return sendJSON(res, 200, Object.values(users).map(publicUser));
+  }
+  if (pathname === '/api/users' && req.method === 'POST') {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const u = userByToken(getToken(req));
+    if (!u || u.rol !== 'SUPERADMIN') return sendJSON(res, 403, { error: 'Solo SUPERADMIN puede crear usuarios' });
+    const nombre = String(body.nombre || '').trim();
+    const email = String(body.email || '').trim().toLowerCase();
+    const password = String(body.password || '');
+    const rol = String(body.rol || 'CLIENTE').toUpperCase();
+    if (!nombre || !email || !email.includes('@')) return sendJSON(res, 400, { error: 'Nombre y email valido son obligatorios' });
+    if (password.length < 6) return sendJSON(res, 400, { error: 'La contrasena debe tener al menos 6 caracteres' });
+    if (!['CLIENTE', 'ADMIN', 'SUPERADMIN', 'PROYECTOS_ESPECIALES', 'PRODUCTOS_ELECTRONICOS'].includes(rol)) return sendJSON(res, 400, { error: 'Rol no valido' });
+    if (users[email]) return sendJSON(res, 409, { error: 'Ese correo ya esta registrado' });
+    users[email] = {
+      nombre, email,
+      telefono: String(body.telefono || '').trim().slice(0, 40),
+      direccion: String(body.direccion || '').trim().slice(0, 240),
+      empresa: String(body.empresa || '').trim().slice(0, 160),
+      passHash: hashPassword(password), rol,
+      activo: body.activo === undefined ? true : !!body.activo,
+      lastLogin: null, createdAt: new Date().toISOString().slice(0, 10),
+    };
+    persistUsers();
+    logAudit(req, { modulo: 'usuarios', evento: 'alta', detalle: nombre + ' (' + rol + ')', usuario: email });
+    return sendJSON(res, 201, publicUser(users[email]));
+  }
+
+  const mUser = /^\/api\/users\/(.+)$/.exec(pathname);
+  if (mUser && req.method === 'PUT') {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const u = userByToken(getToken(req));
+    if (!u || u.rol !== 'SUPERADMIN') return sendJSON(res, 403, { error: 'Solo SUPERADMIN puede editar usuarios' });
+    const email = decodeURIComponent(mUser[1]).toLowerCase();
+    const target = users[email];
+    if (!target) return sendJSON(res, 404, { error: 'Usuario no encontrado' });
+    const self = email === u.email;
+    if (body.rol !== undefined) {
+      const rol = String(body.rol || '').toUpperCase();
+      if (!['CLIENTE', 'ADMIN', 'SUPERADMIN', 'PROYECTOS_ESPECIALES', 'PRODUCTOS_ELECTRONICOS'].includes(rol)) return sendJSON(res, 400, { error: 'Rol no valido' });
+      if (self) return sendJSON(res, 400, { error: 'No puedes cambiar tu propio rol' });
+      if (target.rol !== rol) logAudit(req, { modulo: 'usuarios', evento: 'cambio-rol', detalle: target.nombre + ': ' + target.rol + ' → ' + rol, usuario: email });
+      target.rol = rol;
+    }
+    if (body.nombre !== undefined && String(body.nombre).trim()) target.nombre = String(body.nombre).trim().slice(0, 120);
+    if (body.telefono !== undefined) target.telefono = String(body.telefono).trim().slice(0, 40);
+    if (body.direccion !== undefined) target.direccion = String(body.direccion).trim().slice(0, 240);
+    if (body.empresa !== undefined) target.empresa = String(body.empresa).trim().slice(0, 160);
+    if (body.activo !== undefined) {
+      if (self && !body.activo) return sendJSON(res, 400, { error: 'No puedes desactivar tu propia cuenta' });
+      if (target.activo !== !!body.activo) logAudit(req, { modulo: 'usuarios', evento: body.activo ? 'activacion' : 'desactivacion', detalle: target.nombre, usuario: email });
+      target.activo = !!body.activo;
+    }
+    if (body.newPassword) {
+      if (String(body.newPassword).length < 6) return sendJSON(res, 400, { error: 'La nueva contrasena debe tener al menos 6 caracteres' });
+      target.passHash = hashPassword(body.newPassword);
+      logAudit(req, { modulo: 'usuarios', evento: 'cambio-password', detalle: target.nombre, usuario: email });
+    }
+    persistUsers();
+    return sendJSON(res, 200, publicUser(target));
+  }
+  if (mUser && req.method === 'DELETE') {
+    const u = userByToken(getToken(req));
+    if (!u || u.rol !== 'SUPERADMIN') return sendJSON(res, 403, { error: 'Solo SUPERADMIN puede eliminar usuarios' });
+    const email = decodeURIComponent(mUser[1]).toLowerCase();
+    const target = users[email];
+    if (!target) return sendJSON(res, 404, { error: 'Usuario no encontrado' });
+    if (email === u.email) return sendJSON(res, 400, { error: 'No puedes eliminar tu propia cuenta' });
+    if (target.rol === 'SUPERADMIN' && !Object.values(users).some((x) => x.rol === 'SUPERADMIN' && x.email !== email)) {
+      return sendJSON(res, 400, { error: 'No puedes eliminar al último SUPERADMIN' });
+    }
+    delete users[email];
+    for (const t of Object.keys(sessions)) { if (sessions[t] && sessions[t].email.toLowerCase() === email) delete sessions[t]; }
+    persistUsers();
+    persistSessions();
+    logAudit(req, { modulo: 'usuarios', evento: 'baja', detalle: target.nombre + ' (' + target.rol + ')', usuario: email });
+    return sendJSON(res, 200, { ok: true });
+  }
+
+  // ----- superadmin: bitacora de auditoria -----
+  if (pathname === '/api/auditoria' && req.method === 'GET') {
+    const u = userByToken(getToken(req));
+    if (!u || u.rol !== 'SUPERADMIN') return sendJSON(res, 403, { error: 'Solo SUPERADMIN' });
+    const a = loadAudit();
+    let items = a.items.slice().reverse();
+    const modulo = normalizeSearch(url.searchParams.get('modulo') || '');
+    const q = normalizeSearch(url.searchParams.get('q') || '');
+    const desde = url.searchParams.get('desde') || '';
+    const hasta = url.searchParams.get('hasta') || '';
+    const limit = Math.max(1, Math.min(2000, parseInt(url.searchParams.get('limit') || '200', 10) || 200));
+    if (modulo && modulo !== 'todos') items = items.filter((e) => normalizeSearch(e.modulo || '') === modulo);
+    if (desde) items = items.filter((e) => (e.fecha || '') >= desde);
+    if (hasta) items = items.filter((e) => (e.fecha || '') <= hasta);
+    if (q) items = items.filter((e) => matchesSearch((e.evento || '') + ' ' + (e.detalle || '') + ' ' + (e.usuario || '') + ' ' + (e.nombre || '') + ' ' + (e.folio || ''), q));
+    return sendJSON(res, 200, { total: a.items.length, totalFiltered: items.length, items: items.slice(0, limit).map(publicAudit) });
+  }
+
+  // ----- staff: cambiar estado de cotizacion -----
+  const mEstado = /^\/api\/cotizaciones\/(.+)\/estado$/.exec(pathname);
+  if (mEstado && req.method === 'PUT') {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const u = userByToken(getToken(req));
+    const c = quotes[mEstado[1]];
+    if (!c) return sendJSON(res, 404, { error: 'No encontrada' });
+    const puedePE = u && u.rol === 'PROYECTOS_ESPECIALES' && c.area === 'PROYECTOS_ESPECIALES';
+    if (!quoteScope(u, c) || (!isStaff(u) && !puedePE)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
+    const estado = String(body.estado || '').toUpperCase();
+    if (!['PENDIENTE', 'APROBADA', 'RECHAZADA'].includes(estado)) return sendJSON(res, 400, { error: 'Estado no valido' });
+    const anterior = c.estado;
+    c.estado = estado;
+    if (anterior !== estado) recordQuoteState(c, u, anterior, estado);
+    persistQuotes();
+    logAudit(req, { modulo: 'cotizaciones', evento: 'cambio-estado', detalle: estado, folio: c.folio });
+    return sendJSON(res, 200, quoteForUser(c, u));
+  }
+
+  // ----- proyectos especiales: fases, avance y entrega (rol PE + staff) -----
+  const mProy = /^\/api\/cotizaciones\/(.+)\/proyecto$/.exec(pathname);
+  if (mProy && req.method === 'PUT') {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const u = userByToken(getToken(req));
+    const c = quotes[mProy[1]];
+    if (!c) return sendJSON(res, 404, { error: 'No encontrada' });
+    const puedePE = u && u.rol === 'PROYECTOS_ESPECIALES' && c.area === 'PROYECTOS_ESPECIALES';
+    if (!u || (!isStaff(u) && !puedePE)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
+    if (Array.isArray(body.fases)) {
+      c.fases = body.fases.slice(0, 12).map((f) => ({
+        titulo: String((f && f.titulo) || '').slice(0, 140),
+        desc: String((f && f.desc) || '').slice(0, 500),
+        pct: Math.max(0, Math.min(100, parseInt((f && f.pct) || 0, 10) || 0)),
+        estado: String((f && f.estado) || 'Por iniciar').slice(0, 40),
+      }));
+    }
+    if (body.avance !== undefined) c.avance = Math.max(0, Math.min(100, parseInt(body.avance, 10) || 0));
+    if (body.tecnico !== undefined) c.tecnico = String(body.tecnico).slice(0, 120);
+    if (body.entregado !== undefined) c.entregado = !!body.entregado;
+    if (body.enRevision !== undefined) c.enRevision = !!body.enRevision;
+    if (body.notas !== undefined) c.notas = String(body.notas).slice(0, 1000);
+    persistQuotes();
+    logAudit(req, { modulo: 'proyectos', evento: 'avance', detalle: 'fases/avance de ' + c.folio, folio: c.folio });
+    return sendJSON(res, 200, c);
+  }
+
+  // ----- eliminar cotizacion (staff todo, PE las de su area, cliente las suyas) -----
+  const mDel = /^\/api\/cotizaciones\/([^/]+)$/.exec(pathname);
+  if (mDel && req.method === 'DELETE') {
+    const u = userByToken(getToken(req));
+    const c = quotes[mDel[1]];
+    if (!c) return sendJSON(res, 404, { error: 'No encontrada' });
+    const puedePE = u && u.rol === 'PROYECTOS_ESPECIALES' && c.area === 'PROYECTOS_ESPECIALES';
+    if (!quoteScope(u, c) || (!isStaff(u) && !puedePE && (!c.email || !u.email || c.email.toLowerCase() !== u.email.toLowerCase()))) {
+      return sendJSON(res, 403, { error: 'No tienes permiso para eliminar esta cotizacion' });
+    }
+    delete quotes[mDel[1]];
+    persistQuotes();
+    logAudit(req, { modulo: 'cotizaciones', evento: 'baja', detalle: (c.producto || '') + ' de ' + (c.email || ''), folio: mDel[1] });
+    return sendJSON(res, 200, { ok: true });
+  }
+
+  // ----- mensajes de contacto -----
+  const contactoFile = path.join(DATA_DIR, 'contacto.json');
+  function loadContacto() {
+    try { if (fs.existsSync(contactoFile)) return JSON.parse(fs.readFileSync(contactoFile, 'utf8')); } catch {}
+    return [];
+  }
+  if (pathname === '/api/contacto' && req.method === 'POST') {
+    if (!rateLimit(req, 15)) return sendJSON(res, 429, { error: 'Demasiados mensajes. Espera un minuto.' }, req);
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch (e) { if (e && e.code === 413) return sendJSON(res, 413, { error: 'Mensaje muy grande' }, req); body = {}; }
+    const nombre = String(body.nombre || '').trim().slice(0, 120);
+    const email = String(body.email || '').trim().slice(0, 160);
+    const mensaje = String(body.mensaje || '').trim().slice(0, 2000);
+    if (!nombre || !email || !mensaje) return sendJSON(res, 400, { error: 'Nombre, email y mensaje son obligatorios' });
+    if (!email.includes('@')) return sendJSON(res, 400, { error: 'Email no valido' });
+    const lista = loadContacto();
+    const m = {
+      id: 'MSG-' + Date.now().toString(36).toUpperCase(),
+      fecha: new Date().toISOString().slice(0, 10),
+      nombre, email,
+      telefono: String(body.telefono || '').trim(),
+      asunto: String(body.asunto || 'Consulta general').trim(),
+      mensaje, leido: false,
+    };
+    lista.unshift(m);
+    saveJSON(contactoFile, lista);
+    return sendJSON(res, 201, { ok: true, id: m.id });
+  }
+  if (pathname === '/api/contacto' && req.method === 'GET') {
+    const u = userByToken(getToken(req));
+    if (!u || !isStaff(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
+    return sendJSON(res, 200, loadContacto());
+  }
+  const mMsg = /^\/api\/contacto\/(.+)$/.exec(pathname);
+  if (mMsg && req.method === 'PUT') {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const u = userByToken(getToken(req));
+    if (!u || !isStaff(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
+    const lista = loadContacto();
+    const m = lista.find((x) => x.id === mMsg[1]);
+    if (!m) return sendJSON(res, 404, { error: 'No encontrado' });
+    m.leido = true;
+    saveJSON(contactoFile, lista);
+    return sendJSON(res, 200, m);
+  }
+
+  // ----- catalogo de productos (gestionado por staff, visible en index y catalogo) -----
+  const productosFile = path.join(DATA_DIR, 'productos.json');
+  const productosSeed = path.join(__dirname, 'productos.seed.json');
+  function loadProductos() {
+    try {
+      if (fs.existsSync(productosFile)) return JSON.parse(fs.readFileSync(productosFile, 'utf8'));
+      if (fs.existsSync(productosSeed)) {
+        const seed = JSON.parse(fs.readFileSync(productosSeed, 'utf8'));
+        saveJSON(productosFile, seed);
+        return seed;
+      }
+    } catch {}
+    return [];
+  }
+  function persistProductos(list) { saveJSON(productosFile, list); }
+  function cleanProduct(b) {
+    const s = (v) => String(v == null ? '' : v).trim();
+    const arr = (v) => Array.isArray(v) ? v.map(s).filter(Boolean) : s(v).split(/[;\n]+/).map((x) => x.trim()).filter(Boolean);
+    return {
+      // Jerarquía del catálogo: marca (nivel 1) -> categoría/tipo (nivel 2) -> producto.
+      brand: s(b.brand).slice(0, 60),
+      categoryCode: s(b.categoryCode) || 'general',
+      category: s(b.category) || s(b.categoryCode) || 'General',
+      title: s(b.title),
+      description: s(b.description),
+      images: arr(b.images),
+      idealFor: arr(b.idealFor),
+      electronico: b.electronico === true || String(b.electronico).toLowerCase() === 'true',
+    };
+  }
+  function imagenPesada(b) {
+    return Array.isArray(b.images) && b.images.some((x) => String(x).length > 2000000);
+  }
+  if (pathname === '/api/productos' && req.method === 'GET') {
+    return sendJSON(res, 200, loadProductos());
+  }
+  if (pathname === '/api/productos' && req.method === 'POST') {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const u = userByToken(getToken(req));
+    if (!u || !isStaff(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
+    if (!body.title || !String(body.title).trim()) return sendJSON(res, 400, { error: 'El titulo es obligatorio' });
+    if (imagenPesada(body)) return sendJSON(res, 400, { error: 'Imagen muy pesada (máx 2MB c/u, se comprimen solas al subir)' });
+    const lista = loadProductos();
+    const base = String(body.title).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'producto';
+    let id = base, n = 2;
+    while (lista.some((p) => p.id === id)) id = base + '-' + (n++);
+    const p = { id, ...cleanProduct(body) };
+    lista.push(p);
+    persistProductos(lista);
+    logAudit(req, { modulo: 'catalogo', evento: 'alta', detalle: p.title });
+    return sendJSON(res, 201, p);
+  }
+  // Reasigna publicaciones de una marca o de un tipo a otro destino. Se usa
+  // al quitar una marca/tipo que todavía tiene publicaciones encima.
+  if (pathname === '/api/productos/reasignar' && req.method === 'POST') {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const u = userByToken(getToken(req));
+    if (!u || !isStaff(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
+    const desde = String(body.desde || ''); // 'marca' | 'tipo'
+    const code = slugMarca(body.code || '');
+    const lista = loadProductos();
+    let moving = 0;
+    if (desde === 'marca') {
+      const destino = String(body.brand || '').trim();
+      if (!destino) return sendJSON(res, 400, { error: 'Elige la marca de destino' });
+      const dcode = slugMarca(destino);
+      if (dcode === code) return sendJSON(res, 400, { error: 'El destino es la misma marca' });
+      lista.forEach((p) => { if (slugMarca(p.brand || 'NERBA') === code) { p.brand = destino; moving++; } });
+    } else if (desde === 'tipo') {
+      const destino = String(body.categoryCode || '').trim() || 'general';
+      const etiqueta = String(body.category || '').trim() || destino;
+      if (destino === code) return sendJSON(res, 400, { error: 'El destino es el mismo tipo' });
+      lista.forEach((p) => { if (String(p.categoryCode || 'general') === code) { p.categoryCode = destino; p.category = etiqueta; moving++; } });
+    } else {
+      return sendJSON(res, 400, { error: 'Origen no válido' });
+    }
+    if (!moving) return sendJSON(res, 400, { error: 'No hay publicaciones en ese origen' });
+    persistProductos(lista);
+    logAudit(req, { modulo: 'catalogo', evento: 'edicion', detalle: 'Reasignadas ' + moving + ' publicaciones de ' + code });
+    return sendJSON(res, 200, { ok: true, movidas: moving });
+  }
+  const mProd = /^\/api\/productos\/([^/]+)$/.exec(pathname);
+  if (mProd && (req.method === 'PUT' || req.method === 'DELETE')) {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const u = userByToken(getToken(req));
+    if (!u || !isStaff(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
+    const lista = loadProductos();
+    const idx = lista.findIndex((p) => p.id === mProd[1]);
+    if (idx < 0) return sendJSON(res, 404, { error: 'No encontrado' });
+    if (req.method === 'DELETE') {
+      lista.splice(idx, 1);
+      persistProductos(lista);
+      logAudit(req, { modulo: 'catalogo', evento: 'baja', detalle: mProd[1] });
+      return sendJSON(res, 200, { ok: true });
+    }
+    const upd = cleanProduct({ ...lista[idx], ...body, electronico: body.electronico !== undefined ? body.electronico : lista[idx].electronico });
+    if (imagenPesada(body)) return sendJSON(res, 400, { error: 'Imagen muy pesada (máx 2MB c/u, se comprimen solas al subir)' });
+    if (!upd.title) return sendJSON(res, 400, { error: 'El titulo es obligatorio' });
+    lista[idx] = { id: lista[idx].id, ...upd };
+    persistProductos(lista);
+    logAudit(req, { modulo: 'catalogo', evento: 'edicion', detalle: upd.title });
+    return sendJSON(res, 200, lista[idx]);
+  }
+
+
+  // ----- marcas del catálogo (imagen + etiqueta; las crea/edita el staff) -----
+  const marcasFile = path.join(DATA_DIR, 'marcas.json');
+  function slugMarca(value) {
+    return String(value == null ? '' : value).toLowerCase().normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '').slice(0, 60) || 'nerba';
+  }
+  function loadMarcas() {
+    try { if (fs.existsSync(marcasFile)) return JSON.parse(fs.readFileSync(marcasFile, 'utf8')); } catch {}
+    return {};
+  }
+  function saveMarcas(o) { saveJSON(marcasFile, o); }
+  if (pathname === '/api/marcas' && req.method === 'GET') {
+    const over = loadMarcas();
+    const seen = {};
+    const out = [];
+    loadProductos().forEach(function (p) {
+      const label = String(p.brand || '').trim() || 'NERBA';
+      const code = slugMarca(label);
+      if (seen[code]) return;
+      seen[code] = true;
+      const o = over[code] || {};
+      out.push({ code, label: o.label || label, image: o.image || '', total: 0 });
+    });
+    Object.keys(over).forEach((code) => {
+      if (seen[code]) return;
+      seen[code] = true;
+      out.push({ code, label: over[code].label || code, image: over[code].image || '', total: 0 });
+    });
+    out.forEach((b) => { b.total = loadProductos().filter((p) => slugMarca(p.brand || 'NERBA') === b.code).length; });
+    return sendJSON(res, 200, out);
+  }
+  const mMarca = /^\/api\/marcas\/(.+)$/.exec(pathname);
+  if (mMarca && (req.method === 'PUT' || req.method === 'DELETE')) {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const u = userByToken(getToken(req));
+    if (!u || !isStaff(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
+    const code = slugMarca(decodeURIComponent(mMarca[1] || ''));
+    const over = loadMarcas();
+    if (req.method === 'DELETE') {
+      const usadas = loadProductos().filter((p) => slugMarca(p.brand || 'NERBA') === code);
+      if (usadas.length) {
+        return sendJSON(res, 409, { error: 'La marca tiene ' + usadas.length + ' publicación(es). Quítalas o cámbialas de marca primero.' });
+      }
+      delete over[code];
+      saveMarcas(over);
+      logAudit(req, { modulo: 'catalogo', evento: 'baja', detalle: 'Marca ' + code });
+      return sendJSON(res, 200, { ok: true });
+    }
+    if (body.image && String(body.image).length > 2000000) return sendJSON(res, 400, { error: 'Imagen muy pesada (máx 2MB)' });
+    over[code] = {
+      label: String(body.label || (over[code] && over[code].label) || code).slice(0, 80),
+      image: String(body.image || '').slice(0, 2000000),
+    };
+    saveMarcas(over);
+    logAudit(req, { modulo: 'catalogo', evento: 'edicion', detalle: 'Marca ' + code });
+    return sendJSON(res, 200, { code, label: over[code].label, ok: true });
+  }
+
+  // ----- categorías del catálogo (imagen + etiqueta; las crea/edita el staff) -----
+  const categoriasFile = path.join(DATA_DIR, 'categorias.json');
+  function loadCategorias() {
+    try { if (fs.existsSync(categoriasFile)) return JSON.parse(fs.readFileSync(categoriasFile, 'utf8')); } catch {}
+    return {};
+  }
+  function saveCategorias(o) { saveJSON(categoriasFile, o); }
+  if (pathname === '/api/categorias' && req.method === 'GET') {
+    const over = loadCategorias();
+    const seen = {};
+    const out = [];
+    loadProductos().forEach(function (p) {
+      var code = p.categoryCode || 'general';
+      if (seen[code]) return;
+      seen[code] = true;
+      var o = over[code] || {};
+      out.push({ code: code, label: o.label || p.category || code, image: o.image || '' });
+    });
+    Object.keys(over).forEach(function (code) {
+      if (!seen[code]) { seen[code] = true; out.push({ code: code, label: over[code].label || code, image: over[code].image || '' }); }
+    });
+    return sendJSON(res, 200, out);
+  }
+  const mCat = /^\/api\/categorias\/(.+)$/.exec(pathname);
+  if (mCat && req.method === 'DELETE') {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const u = userByToken(getToken(req));
+    if (!u || !isStaff(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
+    const code = String(decodeURIComponent(mCat[1] || '')).trim().slice(0, 60) || 'general';
+    const usadas = loadProductos().filter((p) => String(p.categoryCode || 'general') === code);
+    if (usadas.length) {
+      return sendJSON(res, 409, { error: 'El tipo tiene ' + usadas.length + ' publicación(es). Quítalas o cámbialas de tipo primero.' });
+    }
+    const over = loadCategorias();
+    delete over[code];
+    saveCategorias(over);
+    logAudit(req, { modulo: 'catalogo', evento: 'baja', detalle: 'Tipo ' + code });
+    return sendJSON(res, 200, { ok: true });
+  }
+  if (mCat && req.method === 'PUT') {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const u = userByToken(getToken(req));
+    if (!u || (u.rol !== 'ADMIN' && u.rol !== 'SUPERADMIN')) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
+    const code = String(decodeURIComponent(mCat[1] || '')).trim().slice(0, 60) || 'general';
+    if (body.image && String(body.image).length > 2000000) return sendJSON(res, 400, { error: 'Imagen muy pesada (máx 2MB)' });
+    const over = loadCategorias();
+    over[code] = {
+      label: String(body.label || (over[code] && over[code].label) || code).slice(0, 120),
+      image: String(body.image || '').slice(0, 2000000),
+    };
+    saveCategorias(over);
+    logAudit(req, { modulo: 'catalogo', evento: 'edicion', detalle: 'Categoría ' + code });
+    return sendJSON(res, 200, { code: code, label: over[code].label, ok: true });
+  }
+
+
+  // ----- solicitudes de mantenimiento (cliente solicita, staff gestiona) -----
+  const mantFile = path.join(DATA_DIR, 'mantenimiento.json');
+  function loadMant() {
+    try { if (fs.existsSync(mantFile)) return JSON.parse(fs.readFileSync(mantFile, 'utf8')); } catch {}
+    return [];
+  }
+  function persistMant(list) { saveJSON(mantFile, list); }
+  if (pathname === '/api/mantenimiento' && req.method === 'POST') {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const u = userByToken(getToken(req));
+    if (!u) return sendJSON(res, 401, { error: 'Inicia sesion para solicitar' });
+    const descripcion = String(body.descripcion || '').trim().slice(0, 2000);
+    if (!descripcion) return sendJSON(res, 400, { error: 'Describe el mantenimiento requerido' });
+    const lista = loadMant();
+    // ID sin colisiones tras borrados: max existente + 1
+    let maxN = 0;
+    for (const x of lista) { const mId = /^MNT-(\d+)-/.exec(String(x.id || '')); if (mId) maxN = Math.max(maxN, parseInt(mId[1], 10) || 0); }
+    const n = maxN + 1;
+    const m = {
+      id: 'MNT-' + String(n).padStart(4, '0') + '-' + new Date().getFullYear(),
+      folio: String(body.folio || '').trim(),
+      fecha: new Date().toISOString().slice(0, 10),
+      email: u.email, nombre: u.nombre,
+      telefono: String(body.telefono || u.telefono || '').trim(),
+      direccion: String(body.direccion || u.direccion || '').trim(),
+      descripcion,
+      estado: 'PENDIENTE',
+    };
+    lista.unshift(m);
+    persistMant(lista);
+    return sendJSON(res, 201, m);
+  }
+  if (pathname === '/api/mantenimiento' && req.method === 'GET') {
+    const u = userByToken(getToken(req));
+    if (!u) return sendJSON(res, 401, { error: 'No autorizado' });
+    let lista = loadMant();
+    if (!isStaff(u)) {
+      lista = lista.filter((m) => m.email && m.email.toLowerCase() === u.email.toLowerCase());
+    }
+    return sendJSON(res, 200, lista);
+  }
+  const mMant = /^\/api\/mantenimiento\/(.+)$/.exec(pathname);
+  if (mMant && req.method === 'PUT') {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const u = userByToken(getToken(req));
+    if (!u || !isStaff(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
+    const lista = loadMant();
+    const m = lista.find((x) => x.id === mMant[1]);
+    if (!m) return sendJSON(res, 404, { error: 'No encontrada' });
+    const estado = String(body.estado || '').toUpperCase();
+    if (!['PENDIENTE', 'EN_PROCESO', 'REALIZADA'].includes(estado)) return sendJSON(res, 400, { error: 'Estado no valido' });
+    m.estado = estado;
+    persistMant(lista);
+    logAudit(req, { modulo: 'mantenimiento', evento: 'cambio-estado', detalle: estado, folio: m.id });
+    return sendJSON(res, 200, m);
+  }
+
+  if (pathname.startsWith('/api/')) return sendJSON(res, 404, { error: 'Ruta API no encontrada' });
+
+  // ----- archivos estaticos del frontend -----
+  let rel = pathname === '/' ? '/index.html' : pathname;
+  // Nunca exponer datos, respaldos, workspaces ni dotfiles aunque FRONT_DIR falle
+  if (/^\/(_respaldo|data)(\/|$)/.test(rel)
+    || /\/\.git(\/|$)/.test(rel) || /\/\.env(\/|$)/i.test(rel)
+    || /\.(code-workspace|ps1)$/i.test(rel)
+    || /(^|\/)(productos\.seed\.json|server\.js|package\.json|run\.bat|run_server\.bat)$/.test(rel)) {
+    res.writeHead(403); return res.end('Prohibido');
+  }
+  const file = path.normalize(path.join(FRONT_DIR, rel));
+  if (!file.startsWith(path.normalize(FRONT_DIR))) {
+    res.writeHead(403); return res.end('Prohibido');
+  }
+  let target = file;
+  if (fs.existsSync(target) && fs.statSync(target).isDirectory()) target = path.join(target, 'index.html');
+  if (!fs.existsSync(target)) { res.writeHead(404); return res.end('No encontrado'); }
+  const ext = path.extname(target).slice(1).toLowerCase();
+  const mime = MIME[ext] || 'application/octet-stream';
+  // Sin esto el navegador se guarda el HTML viejo y los cambios no se ven:
+  // se revalida en cada visita y el servidor responde 304 si no cambio nada.
+  const stat = fs.statSync(target);
+  const headers = {
+    'Content-Type': mime + (mime.startsWith('text/') ? '; charset=utf-8' : ''),
+    'Access-Control-Allow-Origin': corsOrigin(req),
+    'Vary': 'Origin',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
+    'X-Frame-Options': 'SAMEORIGIN',
+    'Last-Modified': stat.mtime.toUTCString(),
+    'Cache-Control': ext === 'html' || ext === 'js' || ext === 'css' || ext === 'json'
+      ? 'no-cache' : 'public, max-age=3600',
+  };
+  const since = req.headers['if-modified-since'];
+  if (since && Date.parse(since) >= Math.floor(stat.mtime.getTime() / 1000) * 1000) {
+    res.writeHead(304, headers);
+    return res.end();
+  }
+  res.writeHead(200, headers);
+  fs.createReadStream(target).pipe(res);
+});
+
+server.listen(PORT, () => {
+  console.log('== Grupo NERBA HIDALGO Backend (Node.js) ==');
+  console.log('Frontend: ' + FRONT_DIR);
+  console.log('Data: ' + DATA_DIR);
+  console.log(`Usuarios: ${Object.keys(users).length} | Cotizaciones: ${Object.keys(quotes).length}`);
+  console.log('Sesiones con expiracion de 8 horas activadas.');
+  console.log(`Listo en http://localhost:${PORT}`);
+});

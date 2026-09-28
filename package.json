@@ -1,0 +1,11 @@
+{
+  "name": "grupo-nerba-hidalgo",
+  "version": "1.2.0",
+  "description": "Grupo NERBA HIDALGO - Frontend + Backend Node.js (sin dependencias)",
+  "scripts": {
+    "start": "node \"NERBA Back/server.js\""
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

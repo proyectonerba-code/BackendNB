@@ -1,0 +1,13 @@
+{
+  "name": "grupo-nerba-hidalgo-back",
+  "version": "1.0.0",
+  "description": "Backend Grupo NERBA HIDALGO en Node.js (sin dependencias)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js 8080"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
