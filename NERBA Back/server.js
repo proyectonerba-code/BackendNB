@@ -15,6 +15,12 @@ const { URL } = require('url');
 
 const PORT = parseInt(process.env.PORT || process.argv[2] || '8080', 10);
 
+// Capa de datos: Postgres si hay DATABASE_URL, JSON local si no.
+const db = require('./db');
+let DB_MODE = false;
+// Mirrors en memoria cuando hay DB (lecturas sync, escritura write-through).
+let cProductos = null, cMarcas = null, cCategorias = null, cContacto = null, cMant = null, cAudit = null;
+
 // Carpeta del frontend: Railway usa FRONT_DIR; local usa carpeta hermana.
 const CANDIDATES = [
   process.env.FRONT_DIR || '',
@@ -134,17 +140,18 @@ function seedUsers() {
 }
 seedUsers();
 
-function persistUsers() { saveJSON(usersFile, users); }
-function persistSessions() { saveJSON(sessionsFile, sessions); }
-function persistQuotes() { saveJSON(quotesFile, Object.values(quotes)); }
+function persistUsers() { saveJSON(usersFile, users); if (DB_MODE) db.wt(db.replaceAll('kv_users', users)); }
+function persistSessions() { saveJSON(sessionsFile, sessions); if (DB_MODE) db.wt(db.replaceAll('kv_sessions', sessions)); }
+function persistQuotes() { saveJSON(quotesFile, Object.values(quotes)); if (DB_MODE) db.wt(db.replaceAll('kv_quotes', quotes)); }
 
 // ---------- bitacora de auditoria (solo SUPERADMIN la consulta) ----------
 const auditFile = path.join(DATA_DIR, 'auditoria.json');
 function loadAudit() {
+  if (DB_MODE && cAudit) return cAudit;
   try {
     if (fs.existsSync(auditFile)) {
       const d = JSON.parse(fs.readFileSync(auditFile, 'utf8'));
-      if (d && Array.isArray(d.items)) return d;
+      if (d && Array.isArray(d.items)) { if (DB_MODE) cAudit = d; return d; }
     }
   } catch {}
   return { items: [], lastHash: 'GENESIS' };
@@ -152,6 +159,14 @@ function loadAudit() {
 function persistAudit(a) {
   if (a.items.length > 2000) a.items = a.items.slice(-2000);
   saveJSON(auditFile, a);
+  if (DB_MODE) {
+    cAudit = a;
+    const byId = {};
+    for (const e of a.items) byId[e.id] = e;
+    db.wt(db.replaceAll('kv_auditoria', byId).then(() =>
+      db.getPool().query(`INSERT INTO kv_meta (key,value) VALUES ('audit_last',$1) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value`, [a.lastHash || 'GENESIS'])
+    ));
+  }
 }
 function clientIp(req) {
   const fwd = req.headers['x-forwarded-for'] || '';
@@ -803,8 +818,18 @@ const server = http.createServer(async (req, res) => {
   // ----- mensajes de contacto -----
   const contactoFile = path.join(DATA_DIR, 'contacto.json');
   function loadContacto() {
-    try { if (fs.existsSync(contactoFile)) return JSON.parse(fs.readFileSync(contactoFile, 'utf8')); } catch {}
+    if (DB_MODE && cContacto) return cContacto;
+    try { if (fs.existsSync(contactoFile)) { const l = JSON.parse(fs.readFileSync(contactoFile, 'utf8')); if (DB_MODE) cContacto = l; return l; } } catch {}
     return [];
+  }
+  function saveContacto(lista) {
+    saveJSON(contactoFile, lista);
+    if (DB_MODE) {
+      cContacto = lista;
+      const byId = {};
+      for (const m of lista) byId[m.id] = m;
+      db.wt(db.replaceAll('kv_contacto', byId));
+    }
   }
   if (pathname === '/api/contacto' && req.method === 'POST') {
     if (!rateLimit(req, 15)) return sendJSON(res, 429, { error: 'Demasiados mensajes. Espera un minuto.' }, req);
@@ -825,7 +850,7 @@ const server = http.createServer(async (req, res) => {
       mensaje, leido: false,
     };
     lista.unshift(m);
-    saveJSON(contactoFile, lista);
+    saveContacto(lista);
     return sendJSON(res, 201, { ok: true, id: m.id });
   }
   if (pathname === '/api/contacto' && req.method === 'GET') {
@@ -843,7 +868,7 @@ const server = http.createServer(async (req, res) => {
     const m = lista.find((x) => x.id === mMsg[1]);
     if (!m) return sendJSON(res, 404, { error: 'No encontrado' });
     m.leido = true;
-    saveJSON(contactoFile, lista);
+    saveContacto(lista);
     return sendJSON(res, 200, m);
   }
 
@@ -851,17 +876,27 @@ const server = http.createServer(async (req, res) => {
   const productosFile = path.join(DATA_DIR, 'productos.json');
   const productosSeed = path.join(__dirname, 'productos.seed.json');
   function loadProductos() {
+    if (DB_MODE && cProductos) return cProductos;
     try {
-      if (fs.existsSync(productosFile)) return JSON.parse(fs.readFileSync(productosFile, 'utf8'));
+      if (fs.existsSync(productosFile)) { const l = JSON.parse(fs.readFileSync(productosFile, 'utf8')); if (DB_MODE) cProductos = l; return l; }
       if (fs.existsSync(productosSeed)) {
         const seed = JSON.parse(fs.readFileSync(productosSeed, 'utf8'));
         saveJSON(productosFile, seed);
+        if (DB_MODE) cProductos = seed;
         return seed;
       }
     } catch {}
     return [];
   }
-  function persistProductos(list) { saveJSON(productosFile, list); }
+  function persistProductos(list) {
+    saveJSON(productosFile, list);
+    if (DB_MODE) {
+      cProductos = list;
+      const byId = {};
+      for (const p of list) byId[p.id] = p;
+      db.wt(db.replaceAll('kv_productos', byId));
+    }
+  }
   function cleanProduct(b) {
     const s = (v) => String(v == null ? '' : v).trim();
     const arr = (v) => Array.isArray(v) ? v.map(s).filter(Boolean) : s(v).split(/[;\n]+/).map((x) => x.trim()).filter(Boolean);
@@ -964,10 +999,11 @@ const server = http.createServer(async (req, res) => {
       .replace(/^-+|-+$/g, '').slice(0, 60) || 'nerba';
   }
   function loadMarcas() {
-    try { if (fs.existsSync(marcasFile)) return JSON.parse(fs.readFileSync(marcasFile, 'utf8')); } catch {}
+    if (DB_MODE && cMarcas) return cMarcas;
+    try { if (fs.existsSync(marcasFile)) { const o = JSON.parse(fs.readFileSync(marcasFile, 'utf8')); if (DB_MODE) cMarcas = o; return o; } } catch {}
     return {};
   }
-  function saveMarcas(o) { saveJSON(marcasFile, o); }
+  function saveMarcas(o) { saveJSON(marcasFile, o); if (DB_MODE) { cMarcas = o; db.wt(db.replaceAll('kv_marcas', o)); } }
   if (pathname === '/api/marcas' && req.method === 'GET') {
     const over = loadMarcas();
     const seen = {};
@@ -1019,10 +1055,11 @@ const server = http.createServer(async (req, res) => {
   // ----- categorías del catálogo (imagen + etiqueta; las crea/edita el staff) -----
   const categoriasFile = path.join(DATA_DIR, 'categorias.json');
   function loadCategorias() {
-    try { if (fs.existsSync(categoriasFile)) return JSON.parse(fs.readFileSync(categoriasFile, 'utf8')); } catch {}
+    if (DB_MODE && cCategorias) return cCategorias;
+    try { if (fs.existsSync(categoriasFile)) { const o = JSON.parse(fs.readFileSync(categoriasFile, 'utf8')); if (DB_MODE) cCategorias = o; return o; } } catch {}
     return {};
   }
-  function saveCategorias(o) { saveJSON(categoriasFile, o); }
+  function saveCategorias(o) { saveJSON(categoriasFile, o); if (DB_MODE) { cCategorias = o; db.wt(db.replaceAll('kv_categorias', o)); } }
   if (pathname === '/api/categorias' && req.method === 'GET') {
     const over = loadCategorias();
     const seen = {};
@@ -1077,10 +1114,19 @@ const server = http.createServer(async (req, res) => {
   // ----- solicitudes de mantenimiento (cliente solicita, staff gestiona) -----
   const mantFile = path.join(DATA_DIR, 'mantenimiento.json');
   function loadMant() {
-    try { if (fs.existsSync(mantFile)) return JSON.parse(fs.readFileSync(mantFile, 'utf8')); } catch {}
+    if (DB_MODE && cMant) return cMant;
+    try { if (fs.existsSync(mantFile)) { const l = JSON.parse(fs.readFileSync(mantFile, 'utf8')); if (DB_MODE) cMant = l; return l; } } catch {}
     return [];
   }
-  function persistMant(list) { saveJSON(mantFile, list); }
+  function persistMant(list) {
+    saveJSON(mantFile, list);
+    if (DB_MODE) {
+      cMant = list;
+      const byId = {};
+      for (const m of list) byId[m.id] = m;
+      db.wt(db.replaceAll('kv_mantenimiento', byId));
+    }
+  }
   if (pathname === '/api/mantenimiento' && req.method === 'POST') {
     let body = {};
     try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
@@ -1179,11 +1225,42 @@ const server = http.createServer(async (req, res) => {
   fs.createReadStream(target).pipe(res);
 });
 
-server.listen(PORT, () => {
-  console.log('== Grupo NERBA HIDALGO Backend (Node.js) ==');
-  console.log('Frontend: ' + FRONT_DIR);
-  console.log('Data: ' + DATA_DIR);
-  console.log(`Usuarios: ${Object.keys(users).length} | Cotizaciones: ${Object.keys(quotes).length}`);
-  console.log('Sesiones con expiracion de 8 horas activadas.');
-  console.log(`Listo en http://localhost:${PORT}`);
-});
+async function start() {
+  if (db.isEnabled()) {
+    try {
+      await db.init();
+      const s = await db.loadAllState();
+      // Si la DB trae datos, mandan; si está vacía y hay JSON local, se migra solo.
+      if (Object.keys(s.users).length) { users = s.users; }
+      else if (Object.keys(users).length) { db.wt(db.replaceAll('kv_users', users)); }
+      if (Object.keys(s.sessions).length) { sessions = s.sessions; persistSessions(); }
+      else if (Object.keys(sessions).length) { db.wt(db.replaceAll('kv_sessions', sessions)); }
+      if (Object.keys(s.quotes).length) {
+        quotes = s.quotes;
+        for (const q of Object.values(quotes)) {
+          const m = /^COT-(\d+)-/.exec(q.folio || '');
+          if (m && parseInt(m[1], 10) >= folioSeq) folioSeq = parseInt(m[1], 10) + 1;
+        }
+      } else if (Object.keys(quotes).length) { db.wt(db.replaceAll('kv_quotes', quotes)); }
+      if (s.productos.length) cProductos = s.productos;
+      if (Object.keys(s.marcas).length) cMarcas = s.marcas;
+      if (Object.keys(s.categorias).length) cCategorias = s.categorias;
+      if (s.contacto.length) cContacto = s.contacto;
+      if (s.mant.length) cMant = s.mant;
+      if (s.audit.items.length) cAudit = s.audit;
+      DB_MODE = true;
+      console.log('Postgres conectado: DB como fuente de verdad.');
+    } catch (e) {
+      console.log('Aviso PG (' + e.message + '): sigo con JSON local.');
+    }
+  }
+  server.listen(PORT, () => {
+    console.log('== Grupo NERBA HIDALGO Backend (Node.js) ==');
+    console.log('Frontend: ' + FRONT_DIR);
+    console.log('Data: ' + (DB_MODE ? 'Postgres' : DATA_DIR));
+    console.log(`Usuarios: ${Object.keys(users).length} | Cotizaciones: ${Object.keys(quotes).length}`);
+    console.log('Sesiones con expiracion de 8 horas activadas.');
+    console.log(`Listo en http://localhost:${PORT}`);
+  });
+}
+start();
