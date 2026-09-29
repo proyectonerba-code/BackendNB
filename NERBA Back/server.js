@@ -42,7 +42,10 @@ const SMTP_PASS = String(process.env.SMTP_PASS || '').replace(/\s+/g, '');
 const SMTP_FROM = String(process.env.SMTP_FROM || ('Grupo NERBA HIDALGO <' + (SMTP_USER || 'no-reply@nerba.mx') + '>')).trim();
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim();
 const RESEND_FROM = String(process.env.RESEND_FROM || 'Nerba <onboarding@resend.dev>').trim();
-function hayCorreo() { return (!!SMTP_USER && !!SMTP_PASS) || !!RESEND_API_KEY; }
+const BREVO_API_KEY = String(process.env.BREVO_API_KEY || '').trim();
+const BREVO_FROM_EMAIL = String(process.env.BREVO_FROM || SMTP_USER || 'proyectonerba@gmail.com').trim();
+const BREVO_FROM_NAME = String(process.env.BREVO_FROM_NAME || 'Grupo NERBA HIDALGO').trim();
+function hayCorreo() { return !!BREVO_API_KEY || !!RESEND_API_KEY || (!!SMTP_USER && !!SMTP_PASS); }
 const RECOVERY_DEBUG = process.env.RECOVERY_DEBUG === '1';
 const RESET_MINUTOS = parseInt(process.env.RESET_MINUTOS || '30', 10);
 const DATA_DIR = path.join(__dirname, 'data');
@@ -256,9 +259,10 @@ function correoRecuperacion(destino, nombre, link) {
     link + '\n\nSi no pediste esto, ignora este mensaje.\n';
 
   // En Railway los puertos SMTP (465/587/25) estan bloqueados: Gmail siempre
-  // da timeout. Por eso Resend (HTTPS 443) va PRIMERO y el SMTP queda como
-  // respaldo para despliegues donde si haya salida SMTP (VPS, Hostinger).
+  // da timeout. Por eso los proveedores HTTP (Brevo, Resend) van PRIMERO y el
+  // SMTP queda como respaldo para despliegues con salida SMTP (VPS, Hostinger).
   const intentos = [];
+  if (BREVO_API_KEY) intentos.push(['brevo', enviaBrevo]);
   if (RESEND_API_KEY) intentos.push(['resend', enviaResend]);
   if (SMTP_USER && SMTP_PASS) intentos.push(['smtp', enviaSMTP]);
   if (!intentos.length) return Promise.reject(new Error('Sin proveedor de correo configurado'));
@@ -276,6 +280,28 @@ function correoRecuperacion(destino, nombre, link) {
   }, Promise.reject(new Error('sin intentos'))).catch(function (e) {
     throw new Error(errores.join(' | ') || ((e && e.message) || 'fallo el envio'));
   });
+
+  function enviaBrevo() {
+    const ctrl = new AbortController();
+    const t = setTimeout(function () { ctrl.abort(); }, 15000);
+    return fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: { 'api-key': BREVO_API_KEY, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({
+        sender: { name: BREVO_FROM_NAME, email: BREVO_FROM_EMAIL },
+        to: [{ email: destino, name: nombre || '' }],
+        subject: asunto,
+        htmlContent: html,
+        textContent: texto,
+      }),
+      signal: ctrl.signal,
+    }).then(function (r) {
+      return r.text().then(function (cuerpo) {
+        if (!r.ok) throw new Error('Brevo ' + r.status + ': ' + cuerpo.slice(0, 200));
+        return true;
+      });
+    }).finally(function () { clearTimeout(t); });
+  }
 
   function enviaResend() {
     const ctrl = new AbortController();
