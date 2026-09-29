@@ -1,0 +1,29 @@
+[
+  {
+    "id": "camaras-con-grabacion",
+    "eyebrow": "CÁMARAS Y GRABACIÓN",
+    "title": "CÁMARAS CON GRABACIÓN",
+    "description": "Cámaras instaladas en accesos, patios y áreas comunes, con imágenes claras para revisar cuando quieras.",
+    "image": "/assets/servicios/servicios-grabacion.jpg",
+    "href": "#",
+    "activo": true
+  },
+  {
+    "id": "camaras-con-monitoreo",
+    "eyebrow": "VIDEOVIGILANCIA",
+    "title": "CÁMARAS CON MONITOREO",
+    "description": "Cámaras instaladas donde importan, con imágenes claras que puedes revisar desde el celular cuando quieras.",
+    "image": "/assets/servicios/servicios-monitoreo.jpg",
+    "href": "#",
+    "activo": true
+  },
+  {
+    "id": "alarma-que-si-responde",
+    "eyebrow": "ALARMAS Y RESPUESTA",
+    "title": "ALARMA QUE SÍ RESPONDE",
+    "description": "Alarma conectada a nuestra central: si ocurre algo, alguien atiende y avisa de inmediato.",
+    "image": "/assets/servicios/servicios-alarma.jpeg",
+    "href": "#",
+    "activo": true
+  }
+]
