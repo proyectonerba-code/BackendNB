@@ -28,7 +28,11 @@ const CANDIDATES = [
 ].filter(Boolean);
 const FRONT_DIR = CANDIDATES.find((p) => { try { return fs.existsSync(p); } catch { return false; } }) || path.resolve(__dirname, '../NERBA Front');
 const FRONTEND_URL = String(process.env.FRONTEND_URL || '').trim().replace(/\/$/, '');
-const SEED_DEMO = process.env.SEED_DEMO !== '0';
+  // Falla seguro. Antes era !== '0', o sea que si la variable NO existia el
+  // seed se activaba solo: con el repo publico, cualquiera con acceso de lectura
+  // podia entrar a produccion como SUPERADMIN con la contrasena del seed.
+  // Ahora solo se siembran si se pide de forma explicita con SEED_DEMO=1.
+  const SEED_DEMO = process.env.SEED_DEMO === '1';
 // SERVE_STATIC=0: solo API (deploy separado: frontend en Netlify). Local: 1.
 const SERVE_STATIC = process.env.SERVE_STATIC !== '0';
 const DATA_DIR = path.join(__dirname, 'data');
@@ -364,7 +368,17 @@ function userByToken(token) {
   if (u && u.activo === false) return null;
   return u;
 }
-function isStaff(user) { return user && (user.rol === 'ADMIN' || user.rol === 'SUPERADMIN' || user.rol === 'PRODUCTOS_ELECTRONICOS'); }
+// Personal interno, sin zona: puede entrar a cualquier panel.
+function isStaff(user) { return user && (user.rol === 'ADMIN' || user.rol === 'SUPERADMIN'); }
+// Personal interno con zona: puede entrar a su panel pero no tocar la de otro.
+// PRODUCTOS_ELECTRONICOS antes caia dentro de isStaff(), y con eso el endpoint
+// /api/admin/overview y el CRUD de productos/marcas/categorias le dejaban
+// modificar el catalogo del ADMIN. La zona es de interfaz, pero la autorizacion
+// tiene que ser del servidor.
+function isZoned(user) { return user && user.rol === 'PRODUCTOS_ELECTRONICOS'; }
+// Administracion del catalogo global. El rol de electronica queda fuera: su
+// catalogo propio lo maneja /api/productos con area=PRODUCTOS_ELECTRONICOS.
+function isCatalogAdmin(user) { return user && (user.rol === 'ADMIN' || user.rol === 'SUPERADMIN'); }
 // Alcance de cotizaciones por rol: SUPERADMIN todo, ADMIN todo menos PE,
 // PROYECTOS_ESPECIALES solo su área, PRODUCTOS_ELECTRONICOS solo la suya,
 // CLIENTE solo las propias. Nada fuera de su zona.
@@ -372,7 +386,10 @@ function quoteScope(u, c) {
   if (!u || !c) return false;
   if (u.rol === 'SUPERADMIN') return true;
   var area = c.area || 'GENERAL';
-  if (u.rol === 'ADMIN') return area !== 'PROYECTOS_ESPECIALES';
+  // El admin cubre seguridad, CCTV, Alarmas y Biometricos: todo menos las dos
+  // zonas que tienen panel propio. Antes solo excluia PROYECTOS_ESPECIALES, asi
+  // que tambien podia ver, cambiar y borrar cotizaciones de electronica.
+  if (u.rol === 'ADMIN') return area !== 'PROYECTOS_ESPECIALES' && area !== 'PRODUCTOS_ELECTRONICOS';
   if (u.rol === 'PROYECTOS_ESPECIALES') return area === 'PROYECTOS_ESPECIALES';
   if (u.rol === 'PRODUCTOS_ELECTRONICOS') {
     return area === 'PRODUCTOS_ELECTRONICOS' || c.tipoInmueble === 'Productos Electrónicos';
@@ -432,7 +449,22 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ----- API -----
-  if (pathname === '/api/health') return sendJSON(res, 200, { ok: true, service: 'grupo-nerba-hidalgo', port: PORT }, req);
+  if (pathname === '/api/health') {
+    // Reporta el modo de arranque sin exponer datos: Railway usa esto para el
+    // healthcheck, y sirve para confirmar de un vistazo si la persistencia
+    // quedo en Postgres o cayo al fallback JSON.
+    var demoVivas = 0;
+    for (var de in users) {
+      if (Object.prototype.hasOwnProperty.call(users, de) && /@(nerba\.mx)$/i.test(String(de))) demoVivas++;
+    }
+    return sendJSON(res, 200, {
+      ok: true,
+      service: 'grupo-nerba-hidalgo',
+      port: PORT,
+      db: db.isEnabled() ? 'postgres' : 'json',
+      demoCuentas: demoVivas,
+    }, req);
+  }
   if (pathname === '/api/config') return sendJSON(res, 200, { googleClientId: GOOGLE_CLIENT_ID }, req);
   if (pathname === '/api/catalogo') return sendJSON(res, 200, CATALOGO, req);
 
@@ -922,7 +954,7 @@ const server = http.createServer(async (req, res) => {
     let body = {};
     try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
     const u = userByToken(getToken(req));
-    if (!u || !isStaff(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
+    if (!u || !isCatalogAdmin(u)) return sendJSON(res, 403, { error: 'Solo administracion de catalogo' });
     if (!body.title || !String(body.title).trim()) return sendJSON(res, 400, { error: 'El titulo es obligatorio' });
     if (imagenPesada(body)) return sendJSON(res, 400, { error: 'Imagen muy pesada (máx 2MB c/u, se comprimen solas al subir)' });
     const lista = loadProductos();
@@ -942,7 +974,7 @@ const server = http.createServer(async (req, res) => {
     let body = {};
     try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
     const u = userByToken(getToken(req));
-    if (!u || !isStaff(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
+    if (!u || !isCatalogAdmin(u)) return sendJSON(res, 403, { error: 'Solo administracion de catalogo' });
     const desde = String(body.desde || ''); // 'marca' | 'tipo'
     const code = slugMarca(body.code || '');
     const lista = loadProductos();
@@ -971,7 +1003,7 @@ const server = http.createServer(async (req, res) => {
     let body = {};
     try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
     const u = userByToken(getToken(req));
-    if (!u || !isStaff(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
+    if (!u || !isCatalogAdmin(u)) return sendJSON(res, 403, { error: 'Solo administracion de catalogo' });
     const lista = loadProductos();
     const idx = lista.findIndex((p) => p.id === mProd[1]);
     if (idx < 0) return sendJSON(res, 404, { error: 'No encontrado' });
@@ -1029,7 +1061,7 @@ const server = http.createServer(async (req, res) => {
     let body = {};
     try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
     const u = userByToken(getToken(req));
-    if (!u || !isStaff(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
+    if (!u || !isCatalogAdmin(u)) return sendJSON(res, 403, { error: 'Solo administracion de catalogo' });
     const code = slugMarca(decodeURIComponent(mMarca[1] || ''));
     const over = loadMarcas();
     if (req.method === 'DELETE') {
@@ -1081,7 +1113,7 @@ const server = http.createServer(async (req, res) => {
     let body = {};
     try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
     const u = userByToken(getToken(req));
-    if (!u || !isStaff(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
+    if (!u || !isCatalogAdmin(u)) return sendJSON(res, 403, { error: 'Solo administracion de catalogo' });
     const code = String(decodeURIComponent(mCat[1] || '')).trim().slice(0, 60) || 'general';
     const usadas = loadProductos().filter((p) => String(p.categoryCode || 'general') === code);
     if (usadas.length) {
