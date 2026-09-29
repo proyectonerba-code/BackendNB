@@ -251,8 +251,21 @@ function correoRecuperacion(destino, nombre, link) {
     'Abre este enlace para cambiar tu contrasena (vence en ' + RESET_MINUTOS + ' minutos):\n' +
     link + '\n\nSi no pediste esto, ignora este mensaje.\n';
 
-  if (SMTP_USER && SMTP_PASS) return enviaSMTP();
-  return enviaResend();
+  // En Railway los puertos SMTP (465/587/25) estan bloqueados: Gmail siempre
+  // da timeout. Por eso Resend (HTTPS 443) va PRIMERO y el SMTP queda como
+  // respaldo para despliegues donde si haya salida SMTP (VPS, Hostinger).
+  const intentos = [];
+  if (RESEND_API_KEY) intentos.push(['resend', enviaResend]);
+  if (SMTP_USER && SMTP_PASS) intentos.push(['smtp', enviaSMTP]);
+  if (!intentos.length) return Promise.reject(new Error('Sin proveedor de correo configurado'));
+
+  return intentos.reduce(function (cadena, item) {
+    return cadena.catch(function () {
+      return item[1]();
+    });
+  }, Promise.reject(new Error('sin intentos'))).catch(function (e) {
+    throw new Error((e && e.message) || 'fallo el envio');
+  });
 
   function enviaResend() {
     return fetch('https://api.resend.com/emails', {
@@ -269,15 +282,14 @@ function correoRecuperacion(destino, nombre, link) {
 
   function enviaSMTP() {
     const nodemailer = require('nodemailer');
-    // Railway no permite salir por el puerto 465 (bloqueado), asi que se usa
-    // el 587 con STARTTLS, que si esta abierto. secure:false + STARTTLS hace
-    // lo mismo que secure:true pero por el puerto permitido.
+    // Puerto 465 cuando el despliegue si permite SMTP; 587 con STARTTLS como
+    // alternativa. secure:true solo aplica al 465.
+    const puerto = parseInt(process.env.SMTP_PORT || '465', 10);
     const tx = nodemailer.createTransport({
       host: String(process.env.SMTP_HOST || 'smtp.gmail.com'),
-      port: parseInt(process.env.SMTP_PORT || '587', 10),
-      secure: false,
-      requireTLS: true,
-      ignoreTLS: false,
+      port: puerto,
+      secure: puerto === 465,
+      requireTLS: puerto !== 465,
       connectionTimeout: 15000,
       greetingTimeout: 15000,
       socketTimeout: 20000,
@@ -602,11 +614,16 @@ if (pathname === '/api/recuperar' && req.method === 'POST') {
   } catch (e) {
     delete resets[hash]; persistResets();
     console.log('Aviso correo recuperacion: ' + e.message);
-    logAudit(req, { modulo: 'accesos', evento: 'recuperar-error', detalle: email, usuario: email });
+    // Respaldo: si el envio fallo (sin SMTP en Railway, quota de Resend, etc.)
+    // el enlace se imprime para mandarlo por WhatsApp. Con RECOVERY_DEBUG=1 se
+    // devuelve en la respuesta, solo para pruebas.
+    if (RECOVERY_DEBUG) console.log('ENLACE ' + link);
+    logAudit(req, { modulo: 'accesos', evento: 'recuperar-error', detalle: email, usuario: u.email });
     // Se responde igual que en el caso exitoso a proposito. Si aqui se
     // devolviera 502, un atacante deduciria quais correos estan registrados:
     // los inexistentes darian 200 y los existentes 502.
   }
+  if (RECOVERY_DEBUG) return sendJSON(res, 200, Object.assign({}, ok, { enlace: link }), req);
   return sendJSON(res, 200, ok, req);
 }
 
@@ -703,88 +720,6 @@ if (pathname === '/api/login' && req.method === 'POST') {
       persistSessions();
     }
     return sendJSON(res, 200, { ok: true });
-  }
-
-  // ----- recuperacion de contrasena (modal login + restablecer.html) -----
-  // Sin SMTP en el proyecto: el enlace se imprime en el log del servidor
-  // (Railway: Deploy Logs) para enviarlo por WhatsApp, y con
-  // RECOVERY_DEBUG=1 se devuelve en la respuesta para probar.
-  const recupFile = path.join(DATA_DIR, 'recuperacion.json');
-  const RECUP_TTL_MS = 60 * 60 * 1000;
-  const RECOVERY_DEBUG = process.env.RECOVERY_DEBUG === '1';
-  function loadRecup() {
-    if (DB_MODE && cRecup) return cRecup;
-    let o = {};
-    try { if (fs.existsSync(recupFile)) o = JSON.parse(fs.readFileSync(recupFile, 'utf8')) || {}; } catch {}
-    // Purgar vencidos al leer
-    let dirty = false;
-    for (const k of Object.keys(o)) {
-      if (!o[k] || Number(o[k].expiresAt) <= Date.now()) { delete o[k]; dirty = true; }
-    }
-    if (dirty) saveJSON(recupFile, o);
-    if (DB_MODE) cRecup = o;
-    return o;
-  }
-  function persistRecup(o) {
-    saveJSON(recupFile, o);
-    if (DB_MODE) { cRecup = o; db.wt(db.replaceAll('kv_recuperacion', o)); }
-  }
-  function frontBase() { return FRONTEND_URL || ''; }
-
-  if (pathname === '/api/recuperar' && req.method === 'POST') {
-    if (!rateLimit(req, 10)) return sendJSON(res, 429, { error: 'Demasiados intentos. Espera unos minutos.' }, req);
-    let body = {};
-    try { body = JSON.parse(await readBody(req)); } catch (e) { if (e && e.code === 413) return sendJSON(res, 413, { error: 'Datos muy grandes' }, req); body = {}; }
-    const email = String(body.email || '').trim().toLowerCase();
-    // Respuesta genérica siempre: no revelar si el correo existe.
-    const GENERICO = { ok: true, mensaje: 'Si ese correo está registrado, te enviamos un enlace.' };
-    if (!email || !email.includes('@')) return sendJSON(res, 200, GENERICO, req);
-    const u = users[email];
-    if (u && u.activo !== false) {
-      const store = loadRecup();
-      const token = crypto.randomBytes(32).toString('hex');
-      store[token] = { email, expiresAt: Date.now() + RECUP_TTL_MS, createdAt: new Date().toISOString() };
-      persistRecup(store);
-      const enlace = frontBase() + '/restablecer.html?token=' + token;
-      console.log('RECUPERAR ' + email + ' -> ' + enlace);
-      logAudit(req, { modulo: 'accesos', evento: 'recuperar-solicitud', detalle: email, usuario: email });
-      if (RECOVERY_DEBUG) return sendJSON(res, 200, { ...GENERICO, enlace }, req);
-    }
-    return sendJSON(res, 200, GENERICO, req);
-  }
-
-  if (pathname === '/api/restablecer/verificar' && req.method === 'POST') {
-    let body = {};
-    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
-    const token = String(body.token || '').trim();
-    const t = token && loadRecup()[token];
-    if (!t || Number(t.expiresAt) <= Date.now()) return sendJSON(res, 410, { error: 'El enlace venció o ya se usó.' }, req);
-    return sendJSON(res, 200, { ok: true, email: t.email }, req);
-  }
-
-  if (pathname === '/api/restablecer' && req.method === 'POST') {
-    if (!rateLimit(req, 15)) return sendJSON(res, 429, { error: 'Demasiados intentos. Espera unos minutos.' }, req);
-    let body = {};
-    try { body = JSON.parse(await readBody(req)); } catch (e) { if (e && e.code === 413) return sendJSON(res, 413, { error: 'Datos muy grandes' }, req); body = {}; }
-    const token = String(body.token || '').trim();
-    const pass = String(body.password || '');
-    const store = loadRecup();
-    const t = token && store[token];
-    if (!t || Number(t.expiresAt) <= Date.now()) return sendJSON(res, 410, { error: 'El enlace venció o ya se usó.' }, req);
-    if (pass.length < 6) return sendJSON(res, 400, { error: 'La contraseña debe tener al menos 6 caracteres.' }, req);
-    const u = users[String(t.email || '').toLowerCase()];
-    if (!u || u.activo === false) { delete store[token]; persistRecup(store); return sendJSON(res, 404, { error: 'Cuenta no disponible.' }, req); }
-    u.passHash = hashPassword(pass);
-    persistUsers();
-    delete store[token];
-    persistRecup(store);
-    // Cerrar demás sesiones por seguridad (lo que promete restablecer.html)
-    for (const k of Object.keys(sessions)) {
-      if (sessions[k] && String(sessions[k].email || '').toLowerCase() === u.email.toLowerCase()) delete sessions[k];
-    }
-    persistSessions();
-    logAudit(req, { modulo: 'accesos', evento: 'recuperar-ok', detalle: u.email, usuario: u.email });
-    return sendJSON(res, 200, { ok: true }, req);
   }
 
   if (pathname === '/api/me') {
