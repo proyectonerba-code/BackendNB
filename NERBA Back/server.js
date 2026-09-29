@@ -112,7 +112,7 @@ function seedDemo() {
   };
   persistQuotes();
 }
-if (Object.keys(quotes).length === 0) seedDemo();
+if (SEED_DEMO && Object.keys(quotes).length === 0) seedDemo();
 
 // Cuentas de prueba para chequeos en local (solo se crean si no existen).
 // En producción define SEED_DEMO=0 para no crearlas.
