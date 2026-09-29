@@ -31,15 +31,15 @@ const FRONTEND_URL = String(process.env.FRONTEND_URL || '').trim().replace(/\/$/
 const SEED_DEMO = process.env.SEED_DEMO !== '0';
 // SERVE_STATIC=0: solo API (deploy separado: frontend en Netlify). Local: 1.
 const SERVE_STATIC = process.env.SERVE_STATIC !== '0';
-// Recuperacion de contrasena por correo: Resend primero, Gmail SMTP como
-// alternativa. Sin ninguna de las dos, /api/recuperar responde 503 en vez
-// de prometer un correo que nunca sale.
-const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim();
-const RESEND_FROM = String(process.env.RESEND_FROM || 'Nerba <onboarding@resend.dev>').trim();
+// Recuperacion de contrasena por correo: Gmail SMTP (puerto 587 STARTTLS).
+// Si hay SMTP_USER/SMTP_PASS se usa SMTP; si no, Resend. Sin ninguna de las
+// dos, /api/recuperar responde 503 en vez de prometer un correo que nunca sale.
 const SMTP_USER = String(process.env.SMTP_USER || '').trim();
 const SMTP_PASS = String(process.env.SMTP_PASS || '').replace(/\s+/g, '');
 const SMTP_FROM = String(process.env.SMTP_FROM || ('Grupo NERBA HIDALGO <' + (SMTP_USER || 'no-reply@nerba.mx') + '>')).trim();
-function hayCorreo() { return !!RESEND_API_KEY || (!!SMTP_USER && !!SMTP_PASS); }
+const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim();
+const RESEND_FROM = String(process.env.RESEND_FROM || 'Nerba <onboarding@resend.dev>').trim();
+function hayCorreo() { return (!!SMTP_USER && !!SMTP_PASS) || !!RESEND_API_KEY; }
 const RESET_MINUTOS = parseInt(process.env.RESET_MINUTOS || '30', 10);
 const DATA_DIR = path.join(__dirname, 'data');
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -251,14 +251,8 @@ function correoRecuperacion(destino, nombre, link) {
     'Abre este enlace para cambiar tu contrasena (vence en ' + RESET_MINUTOS + ' minutos):\n' +
     link + '\n\nSi no pediste esto, ignora este mensaje.\n';
 
-  return enviaResend().catch(function (e) {
-    // Si Resend falla y hay Gmail configurado, se intenta por SMTP antes de rendirse.
-    if (SMTP_USER && SMTP_PASS) {
-      console.log('Resend fallo (' + e.message + '), reintentando por SMTP...');
-      return enviaSMTP();
-    }
-    throw e;
-  });
+  if (SMTP_USER && SMTP_PASS) return enviaSMTP();
+  return enviaResend();
 
   function enviaResend() {
     return fetch('https://api.resend.com/emails', {
@@ -275,10 +269,18 @@ function correoRecuperacion(destino, nombre, link) {
 
   function enviaSMTP() {
     const nodemailer = require('nodemailer');
+    // Railway no permite salir por el puerto 465 (bloqueado), asi que se usa
+    // el 587 con STARTTLS, que si esta abierto. secure:false + STARTTLS hace
+    // lo mismo que secure:true pero por el puerto permitido.
     const tx = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
+      host: String(process.env.SMTP_HOST || 'smtp.gmail.com'),
+      port: parseInt(process.env.SMTP_PORT || '587', 10),
+      secure: false,
+      requireTLS: true,
+      ignoreTLS: false,
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 20000,
       auth: { user: SMTP_USER, pass: SMTP_PASS },
     });
     return tx.sendMail({ from: SMTP_FROM, to: destino, subject: asunto, html, text: texto });
