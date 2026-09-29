@@ -31,15 +31,19 @@ const FRONTEND_URL = String(process.env.FRONTEND_URL || '').trim().replace(/\/$/
 const SEED_DEMO = process.env.SEED_DEMO !== '0';
 // SERVE_STATIC=0: solo API (deploy separado: frontend en Netlify). Local: 1.
 const SERVE_STATIC = process.env.SERVE_STATIC !== '0';
-// Recuperacion de contrasena por correo: Gmail SMTP (puerto 587 STARTTLS).
-// Si hay SMTP_USER/SMTP_PASS se usa SMTP; si no, Resend. Sin ninguna de las
-// dos, /api/recuperar responde 503 en vez de prometer un correo que nunca sale.
+// Recuperacion de contrasena por correo: Resend (HTTPS) primero porque Railway
+// bloquea los puertos SMTP; SMTP queda de respaldo para VPS/Hostinger.
+// Sin ninguna de las dos, /api/recuperar responde 503 en vez de prometer un
+// correo que nunca sale.
+// RECOVERY_DEBUG=1 imprime el enlace en el log (respaldo manual) y lo devuelve
+// en la respuesta. Solo para pruebas: nunca activarlo en produccion.
 const SMTP_USER = String(process.env.SMTP_USER || '').trim();
 const SMTP_PASS = String(process.env.SMTP_PASS || '').replace(/\s+/g, '');
 const SMTP_FROM = String(process.env.SMTP_FROM || ('Grupo NERBA HIDALGO <' + (SMTP_USER || 'no-reply@nerba.mx') + '>')).trim();
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim();
 const RESEND_FROM = String(process.env.RESEND_FROM || 'Nerba <onboarding@resend.dev>').trim();
 function hayCorreo() { return (!!SMTP_USER && !!SMTP_PASS) || !!RESEND_API_KEY; }
+const RECOVERY_DEBUG = process.env.RECOVERY_DEBUG === '1';
 const RESET_MINUTOS = parseInt(process.env.RESET_MINUTOS || '30', 10);
 const DATA_DIR = path.join(__dirname, 'data');
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -259,25 +263,34 @@ function correoRecuperacion(destino, nombre, link) {
   if (SMTP_USER && SMTP_PASS) intentos.push(['smtp', enviaSMTP]);
   if (!intentos.length) return Promise.reject(new Error('Sin proveedor de correo configurado'));
 
+  // Se prueban en orden y se acumulan los errores: si todos fallan, el mensaje
+  // dice CUAL fallo y por que (asi se distingue "key invalida" de "sin salida").
+  const errores = [];
   return intentos.reduce(function (cadena, item) {
     return cadena.catch(function () {
-      return item[1]();
+      return item[1]().catch(function (e) {
+        errores.push(item[0] + ': ' + ((e && e.message) || 'error'));
+        throw e;
+      });
     });
   }, Promise.reject(new Error('sin intentos'))).catch(function (e) {
-    throw new Error((e && e.message) || 'fallo el envio');
+    throw new Error(errores.join(' | ') || ((e && e.message) || 'fallo el envio'));
   });
 
   function enviaResend() {
+    const ctrl = new AbortController();
+    const t = setTimeout(function () { ctrl.abort(); }, 15000);
     return fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({ from: RESEND_FROM, to: [destino], subject: asunto, html, text: texto }),
+      signal: ctrl.signal,
     }).then(function (r) {
-      return r.text().then(function (t) {
-        if (!r.ok) throw new Error('Resend ' + r.status + ': ' + t.slice(0, 200));
+      return r.text().then(function (cuerpo) {
+        if (!r.ok) throw new Error('Resend ' + r.status + ': ' + cuerpo.slice(0, 200));
         return true;
       });
-    });
+    }).finally(function () { clearTimeout(t); });
   }
 
   function enviaSMTP() {
