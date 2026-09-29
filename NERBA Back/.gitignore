@@ -1,0 +1,15 @@
+# Datos en runtime: usuarios, sesiones, auditoria y tokens de recuperacion.
+# Nunca se versionan. En Railway viven en el disco del servicio.
+data/
+
+# Secretos. Copia .env.example a .env y nunca subas el real: contiene
+# GOOGLE_CLIENT_ID y, cuando se active, RESEND_API_KEY.
+.env
+.env.*
+!.env.example
+
+node_modules/
+npm-debug.log*
+*.log
+.DS_Store
+Thumbs.db

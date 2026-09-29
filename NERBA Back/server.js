@@ -35,6 +35,12 @@ const FRONTEND_URL = String(process.env.FRONTEND_URL || '').trim().replace(/\/$/
   const SEED_DEMO = process.env.SEED_DEMO === '1';
 // SERVE_STATIC=0: solo API (deploy separado: frontend en Netlify). Local: 1.
 const SERVE_STATIC = process.env.SERVE_STATIC !== '0';
+// Recuperacion de contrasena por correo (Resend). Sin RESEND_API_KEY la
+// funcionalidad queda apagada y /api/recuperar responde 503, en vez de
+// prometer un correo que nunca sale.
+const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim();
+const RESEND_FROM = String(process.env.RESEND_FROM || 'Nerba <onboarding@resend.dev>').trim();
+const RESET_MINUTOS = parseInt(process.env.RESET_MINUTOS || '30', 10);
 const DATA_DIR = path.join(__dirname, 'data');
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -177,6 +183,86 @@ function clientIp(req) {
   const ip = String(fwd).split(',')[0].trim() || (req.socket && req.socket.remoteAddress) || '';
   return ip.replace(/^::ffff:/, '').slice(0, 45);
 }
+/* ---------- Recuperacion de contrasena por correo ----------
+   El token se guarda hasheado, no en claro: si alguien lee la base, no le
+   sirve para cambiar contrasenas. Expira y se quema al usarse. */
+const resetFile = path.join(DATA_DIR, 'resets.json');
+let resets = loadJSON(resetFile, {});
+
+function persistResets() { saveJSON(resetFile, resets); }
+
+function escapeHTML(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Deja el telefono en E.164 de Mexico (52 + 10 digitos) para que WhatsApp y
+// SMS lo usen tal cual. Acepta "775 130 0335", "+52 775...", "(775) 130-0335".
+function normalizaTelefono(v) {
+  let d = String(v || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.length === 13 && (d.startsWith('044') || d.startsWith('040'))) d = d.slice(3);
+  else if (d.length === 11 && (d.startsWith('044') || d.startsWith('040'))) d = d.slice(3);
+  if (d.length === 10) d = '52' + d;
+  else if (d.length === 11 && d.charAt(0) === '1') d = '52' + d.slice(1);
+  else if (d.length > 12) d = d.slice(0, 12);
+  return d;
+}
+
+function nuevoToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+// Nunca se guarda ni se compara el token en claro: la tabla se indexa por su
+// hash sha256, asi que un volcado de resets.json no sirve para entrar.
+function hashToken(token) {
+  return crypto.createHash('sha256').update(String(token || '').trim()).digest('hex');
+}
+
+function tokenGuardado(hash) {
+  const r = resets[hash];
+  if (!r) return null;
+  if (Date.now() > r.expira) { delete resets[hash]; persistResets(); return null; }
+  return r;
+}
+
+function correoRecuperacion(destino, nombre, link) {
+  const asunto = 'Recupera tu contrasena - Grupo NERBA HIDALGO';
+  const html =
+    '<div style="font-family:Segoe UI,Arial,sans-serif;max-width:520px;margin:0 auto">' +
+    '<h2 style="color:#b0000b;margin:0 0 16px">Grupo NERBA HIDALGO</h2>' +
+    '<p>Hola ' + escapeHTML(nombre || '') + ',</p>' +
+    '<p>Recibimos una solicitud para restablecer la contrasena de tu cuenta.</p>' +
+    '<p style="margin:28px 0"><a href="' + escapeHTML(link) + '" ' +
+    'style="background:#b0000b;color:#fff;padding:13px 26px;border-radius:8px;' +
+    'text-decoration:none;font-weight:700;display:inline-block">Cambiar mi contrasena</a></p>' +
+    '<p style="font-size:13px;color:#666">El enlace vence en ' + RESET_MINUTOS +
+    ' minutos y solo puede usarse una vez. Si no pediste esto, ignora este correo: ' +
+    'tu contrasena sigue igual.</p>' +
+    '<hr style="border:none;border-top:1px solid #e5e5e5;margin:24px 0">' +
+    '<p style="font-size:12px;color:#888">Si el boton no funciona, copia esta direccion:<br>' +
+    escapeHTML(link) + '</p>' +
+    '<p style="font-size:12px;color:#888">Grupo Empresarial Nerba, S.A. de C.V. &middot; ' +
+    '775 130 0335 &middot; 771 219 8250 &middot; gruponerba@hotmail.com</p></div>';
+  const texto =
+    'Recuperacion de contrasena - Grupo NERBA HIDALGO\n\n' +
+    'Hola ' + (nombre || '') + ',\n\n' +
+    'Abre este enlace para cambiar tu contrasena (vence en ' + RESET_MINUTOS + ' minutos):\n' +
+    link + '\n\nSi no pediste esto, ignora este mensaje.\n';
+
+  return fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: RESEND_FROM, to: [destino], subject: asunto, html, text: texto }),
+  }).then(function (r) {
+    return r.text().then(function (t) {
+      if (!r.ok) throw new Error('Resend ' + r.status + ': ' + t.slice(0, 200));
+      return true;
+    });
+  });
+}
+
 function logAudit(req, info) {
   try {
     const a = loadAudit();
@@ -482,14 +568,86 @@ const server = http.createServer(async (req, res) => {
     if (!email.includes('@')) return sendJSON(res, 400, { error: 'Email no valido' });
     if (password.length < 6) return sendJSON(res, 400, { error: 'La contrasena debe tener al menos 6 caracteres' });
     if (users[email]) return sendJSON(res, 409, { error: 'Ese correo ya esta registrado. Inicia sesion.' });
-    users[email] = { nombre, email, passHash: hashPassword(password), rol: 'CLIENTE', activo: true, tema: 'light', lastLogin: null, createdAt: new Date().toISOString().slice(0, 10) };
+    // El formulario de registro pide el telefono, pero antes se descartaba aqui y
+    // publicUser lo devolvia vacio. Se guarda normalizado a solo digitos para que
+    // el envio de SMS o WhatsApp no tenga que limpiarlo.
+    const telefono = normalizaTelefono(body.telefono);
+    users[email] = { nombre, email, telefono, passHash: hashPassword(password), rol: 'CLIENTE', activo: true, tema: 'light', lastLogin: null, createdAt: new Date().toISOString().slice(0, 10) };
     persistUsers();
     logAudit(req, { modulo: 'accesos', evento: 'registro', detalle: nombre, usuario: email });
     const token = createSession(email);
     return sendJSON(res, 201, { token, ...publicUser(users[email]) });
   }
 
-  if (pathname === '/api/login' && req.method === 'POST') {
+  /* --- Recuperacion de contrasena ---
+   /api/recuperar siempre responde 200 con el mismo mensaje, exista o no el
+   correo. Si dijera "no encontramos esa cuenta", alguien podria usarla para
+   averiguar quais correos estan registrados. */
+if (pathname === '/api/recuperar' && req.method === 'POST') {
+  if (!rateLimit(req, 5)) return sendJSON(res, 429, { error: 'Demasiados intentos. Espera un minuto.' }, req);
+  if (!RESEND_API_KEY) return sendJSON(res, 503, { error: 'La recuperacion por correo no esta disponible por ahora. Escribe a gruponerba@hotmail.com o llama al 775 130 0335.' }, req);
+  let body = {};
+  try { body = JSON.parse(await readBody(req)); } catch (e) { body = {}; }
+  const email = String(body.email || '').trim().toLowerCase();
+  const ok = { ok: true, mensaje: 'Si ese correo esta registrado, te enviamos un enlace para cambiar tu contrasena.' };
+  if (!email.includes('@')) return sendJSON(res, 200, ok, req);
+  const u = users[email];
+  if (!u || u.activo === false) { logAudit(req, { modulo: 'accesos', evento: 'recuperar-desconocido', detalle: email, usuario: email }); return sendJSON(res, 200, ok, req); }
+
+  const token = nuevoToken();
+  const hash = hashToken(token);
+  resets[hash] = { email, expira: Date.now() + RESET_MINUTOS * 60000, creado: new Date().toISOString() };
+  persistResets();
+  const base = FRONTEND_URL || (req.headers.origin || '').replace(/\/$/, '');
+  const link = base + '/restablecer.html?token=' + encodeURIComponent(token);
+  try {
+    await correoRecuperacion(email, u.nombre, link);
+    logAudit(req, { modulo: 'accesos', evento: 'recuperar-enviado', detalle: email, usuario: email });
+  } catch (e) {
+    delete resets[hash]; persistResets();
+    console.log('Aviso correo recuperacion: ' + e.message);
+    logAudit(req, { modulo: 'accesos', evento: 'recuperar-error', detalle: email, usuario: email });
+    // Se responde igual que en el caso exitoso a proposito. Si aqui se
+    // devolviera 502, un atacante deduciria quais correos estan registrados:
+    // los inexistentes darian 200 y los existentes 502.
+  }
+  return sendJSON(res, 200, ok, req);
+}
+
+/* Verifica el token y deja mostrar el formulario. No lo quema: ese paso es
+   /api/restablecer, para que recargar la pagina no corte el proceso. */
+if (pathname === '/api/restablecer/verificar' && req.method === 'POST') {
+  let body = {};
+  try { body = JSON.parse(await readBody(req)); } catch (e) { body = {}; }
+  // La tabla esta indexada por el hash del token, no por el token en claro.
+  const r = tokenGuardado(hashToken(body.token));
+  if (!r) return sendJSON(res, 400, { error: 'El enlace vencio o ya se uso. Pide uno nuevo.' }, req);
+  const u = users[r.email] || {};
+  return sendJSON(res, 200, { ok: true, email: r.email, nombre: u.nombre || '' }, req);
+}
+
+if (pathname === '/api/restablecer' && req.method === 'POST') {
+  if (!rateLimit(req, 10)) return sendJSON(res, 429, { error: 'Demasiados intentos. Espera un minuto.' }, req);
+  let body = {};
+  try { body = JSON.parse(await readBody(req)); } catch (e) { body = {}; }
+  const hash = hashToken(body.token);
+  const r = tokenGuardado(hash);
+  if (!r) return sendJSON(res, 400, { error: 'El enlace vencio o ya se uso. Pide uno nuevo.' }, req);
+  const nueva = String(body.password || '');
+  if (nueva.length < 6) return sendJSON(res, 400, { error: 'La contrasena debe tener al menos 6 caracteres' }, req);
+  const u = users[r.email];
+  if (!u) { delete resets[hash]; persistResets(); return sendJSON(res, 404, { error: 'La cuenta ya no existe' }, req); }
+  u.passHash = hashPassword(nueva);
+  // El token se quema y se cierra el resto de sesiones abiertas de esa cuenta.
+  delete resets[hash]; persistResets();
+  Object.keys(sessions).forEach(function (k) { if (sessions[k] && sessions[k].email === r.email) delete sessions[k]; });
+  persistSessions();
+  persistUsers();
+  logAudit(req, { modulo: 'accesos', evento: 'contrasena-restablecida', detalle: r.email, usuario: r.email });
+  return sendJSON(res, 200, { ok: true }, req);
+}
+
+if (pathname === '/api/login' && req.method === 'POST') {
     if (!rateLimit(req, 30)) return sendJSON(res, 429, { error: 'Demasiados intentos. Espera un minuto.' }, req);
     let body = {};
     try { body = JSON.parse(await readBody(req)); } catch (e) { if (e && e.code === 413) return sendJSON(res, 413, { error: 'Datos muy grandes' }, req); body = {}; }
@@ -559,8 +717,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET') return sendJSON(res, 200, publicUser(u));
     if (req.method === 'PUT') {
       if (body.nombre !== undefined) u.nombre = String(body.nombre).trim().slice(0, 120) || u.nombre;
-      if (body.telefono !== undefined) u.telefono = String(body.telefono).trim().slice(0, 40);
-      if (body.telefonoSec !== undefined) u.telefonoSec = String(body.telefonoSec).trim().slice(0, 40);
+      if (body.telefono !== undefined) u.telefono = normalizaTelefono(body.telefono);
+      if (body.telefonoSec !== undefined) u.telefonoSec = normalizaTelefono(body.telefonoSec);
       if (body.direccion !== undefined) u.direccion = String(body.direccion).trim().slice(0, 240);
       if (body.empresa !== undefined) u.empresa = String(body.empresa).trim().slice(0, 160);
       if (body.tema === 'dark' || body.tema === 'light') u.tema = body.tema;
@@ -703,7 +861,7 @@ const server = http.createServer(async (req, res) => {
     if (users[email]) return sendJSON(res, 409, { error: 'Ese correo ya esta registrado' });
     users[email] = {
       nombre, email,
-      telefono: String(body.telefono || '').trim().slice(0, 40),
+      telefono: normalizaTelefono(body.telefono),
       direccion: String(body.direccion || '').trim().slice(0, 240),
       empresa: String(body.empresa || '').trim().slice(0, 160),
       passHash: hashPassword(password), rol,
@@ -733,7 +891,7 @@ const server = http.createServer(async (req, res) => {
       target.rol = rol;
     }
     if (body.nombre !== undefined && String(body.nombre).trim()) target.nombre = String(body.nombre).trim().slice(0, 120);
-    if (body.telefono !== undefined) target.telefono = String(body.telefono).trim().slice(0, 40);
+    if (body.telefono !== undefined) target.telefono = normalizaTelefono(body.telefono);
     if (body.direccion !== undefined) target.direccion = String(body.direccion).trim().slice(0, 240);
     if (body.empresa !== undefined) target.empresa = String(body.empresa).trim().slice(0, 160);
     if (body.activo !== undefined) {
