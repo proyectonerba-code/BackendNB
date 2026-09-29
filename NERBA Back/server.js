@@ -522,10 +522,12 @@ const server = http.createServer(async (req, res) => {
     let u = users[profile.email];
     if (u && u.googleSub && u.googleSub !== profile.sub) return sendJSON(res, 409, { error: 'Esta cuenta ya está vinculada a otro acceso de Google.' });
     if (u && u.activo === false) return sendJSON(res, 403, { error: 'Cuenta desactivada. Contacta al administrador.' });
+    let esNuevo = false;
     if (!u) {
       const randomPassword = crypto.randomBytes(24).toString('hex');
       u = users[profile.email] = { nombre: profile.nombre, email: profile.email, passHash: hashPassword(randomPassword), googleSub: profile.sub, authProvider: 'google', rol: 'CLIENTE', activo: true, tema: 'light', lastLogin: null, createdAt: new Date().toISOString().slice(0, 10) };
       persistUsers();
+      esNuevo = true;
       logAudit(req, { modulo: 'accesos', evento: 'registro', detalle: profile.nombre + ' (Google)', usuario: profile.email });
     } else if (!u.googleSub) {
       u.googleSub = profile.sub;
@@ -534,8 +536,8 @@ const server = http.createServer(async (req, res) => {
     u.lastLogin = { fecha: new Date().toISOString().slice(0, 10), hora: new Date().toTimeString().slice(0, 8), ip: clientIp(req) };
     persistUsers();
     const token = createSession(profile.email);
-    logAudit(req, { modulo: 'accesos', evento: 'login', detalle: u.nombre + ' (' + u.rol + ', Google)' });
-    return sendJSON(res, 200, { token, ...publicUser(u) });
+    logAudit(req, { modulo: 'accesos', evento: esNuevo ? 'registro' : 'login', detalle: u.nombre + ' (' + u.rol + ', Google)' });
+    return sendJSON(res, esNuevo ? 201 : 200, { token, ...publicUser(u), nuevo: esNuevo });
   }
 
   // ----- logout: invalida la sesion en el servidor -----
