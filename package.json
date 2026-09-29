@@ -5,6 +5,9 @@
   "scripts": {
     "start": "node \"NERBA Back/server.js\""
   },
+  "dependencies": {
+    "pg": "^8.13.0"
+  },
   "engines": {
     "node": ">=18"
   }
