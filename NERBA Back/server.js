@@ -31,11 +31,15 @@ const FRONTEND_URL = String(process.env.FRONTEND_URL || '').trim().replace(/\/$/
 const SEED_DEMO = process.env.SEED_DEMO !== '0';
 // SERVE_STATIC=0: solo API (deploy separado: frontend en Netlify). Local: 1.
 const SERVE_STATIC = process.env.SERVE_STATIC !== '0';
-// Recuperacion de contrasena por correo (Resend). Sin RESEND_API_KEY la
-// funcionalidad queda apagada y /api/recuperar responde 503, en vez de
-// prometer un correo que nunca sale.
+// Recuperacion de contrasena por correo: Resend primero, Gmail SMTP como
+// alternativa. Sin ninguna de las dos, /api/recuperar responde 503 en vez
+// de prometer un correo que nunca sale.
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim();
 const RESEND_FROM = String(process.env.RESEND_FROM || 'Nerba <onboarding@resend.dev>').trim();
+const SMTP_USER = String(process.env.SMTP_USER || '').trim();
+const SMTP_PASS = String(process.env.SMTP_PASS || '').replace(/\s+/g, '');
+const SMTP_FROM = String(process.env.SMTP_FROM || ('Grupo NERBA HIDALGO <' + (SMTP_USER || 'no-reply@nerba.mx') + '>')).trim();
+function hayCorreo() { return !!RESEND_API_KEY || (!!SMTP_USER && !!SMTP_PASS); }
 const RESET_MINUTOS = parseInt(process.env.RESET_MINUTOS || '30', 10);
 const DATA_DIR = path.join(__dirname, 'data');
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -247,16 +251,38 @@ function correoRecuperacion(destino, nombre, link) {
     'Abre este enlace para cambiar tu contrasena (vence en ' + RESET_MINUTOS + ' minutos):\n' +
     link + '\n\nSi no pediste esto, ignora este mensaje.\n';
 
-  return fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: RESEND_FROM, to: [destino], subject: asunto, html, text: texto }),
-  }).then(function (r) {
-    return r.text().then(function (t) {
-      if (!r.ok) throw new Error('Resend ' + r.status + ': ' + t.slice(0, 200));
-      return true;
-    });
+  return enviaResend().catch(function (e) {
+    // Si Resend falla y hay Gmail configurado, se intenta por SMTP antes de rendirse.
+    if (SMTP_USER && SMTP_PASS) {
+      console.log('Resend fallo (' + e.message + '), reintentando por SMTP...');
+      return enviaSMTP();
+    }
+    throw e;
   });
+
+  function enviaResend() {
+    return fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: RESEND_FROM, to: [destino], subject: asunto, html, text: texto }),
+    }).then(function (r) {
+      return r.text().then(function (t) {
+        if (!r.ok) throw new Error('Resend ' + r.status + ': ' + t.slice(0, 200));
+        return true;
+      });
+    });
+  }
+
+  function enviaSMTP() {
+    const nodemailer = require('nodemailer');
+    const tx = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
+      auth: { user: SMTP_USER, pass: SMTP_PASS },
+    });
+    return tx.sendMail({ from: SMTP_FROM, to: destino, subject: asunto, html, text: texto });
+  }
 }
 
 function logAudit(req, info) {
@@ -553,7 +579,7 @@ const server = http.createServer(async (req, res) => {
    averiguar quais correos estan registrados. */
 if (pathname === '/api/recuperar' && req.method === 'POST') {
   if (!rateLimit(req, 5)) return sendJSON(res, 429, { error: 'Demasiados intentos. Espera un minuto.' }, req);
-  if (!RESEND_API_KEY) return sendJSON(res, 503, { error: 'La recuperacion por correo no esta disponible por ahora. Escribe a gruponerba@hotmail.com o llama al 775 130 0335.' }, req);
+  if (!hayCorreo()) return sendJSON(res, 503, { error: 'La recuperacion por correo no esta disponible por ahora. Escribe a gruponerba@hotmail.com o llama al 775 130 0335.' }, req);
   let body = {};
   try { body = JSON.parse(await readBody(req)); } catch (e) { body = {}; }
   const email = String(body.email || '').trim().toLowerCase();
