@@ -33,6 +33,7 @@ async function init() {
   await p.query(`CREATE TABLE IF NOT EXISTS kv_contacto (key TEXT PRIMARY KEY, data JSONB NOT NULL)`);
   await p.query(`CREATE TABLE IF NOT EXISTS kv_mantenimiento (key TEXT PRIMARY KEY, data JSONB NOT NULL)`);
   await p.query(`CREATE TABLE IF NOT EXISTS kv_auditoria (key TEXT PRIMARY KEY, data JSONB NOT NULL)`);
+  await p.query(`CREATE TABLE IF NOT EXISTS kv_recuperacion (key TEXT PRIMARY KEY, data JSONB NOT NULL)`);
   await p.query(`CREATE TABLE IF NOT EXISTS kv_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`);
 }
 
@@ -79,7 +80,7 @@ async function loadList(table) {
 }
 
 async function loadAllState() {
-  const [users, sessions, quotes, productos, marcas, categorias, contacto, mant, auditoria] = await Promise.all([
+  const [users, sessions, quotes, productos, marcas, categorias, contacto, mant, auditoria, recup] = await Promise.all([
     loadAll('kv_users'),
     loadSessions(),
     loadAll('kv_quotes'),
@@ -89,6 +90,7 @@ async function loadAllState() {
     loadList('kv_contacto'),
     loadList('kv_mantenimiento'),
     loadAll('kv_auditoria'),
+    loadAll('kv_recuperacion'),
   ]);
   const items = Object.values(auditoria || {}).sort((a, b) => String(a.id || '').localeCompare(String(b.id || '')));
   let lastHash = 'GENESIS';
@@ -98,7 +100,7 @@ async function loadAllState() {
     if (r.rows[0]) lastHash = r.rows[0].value;
   } catch {}
   if (items.length) lastHash = items[items.length - 1].hash || lastHash;
-  return { users, sessions, quotes, productos: Object.values(productos || {}), marcas, categorias, contacto, mant, audit: { items, lastHash } };
+  return { users, sessions, quotes, productos: Object.values(productos || {}), marcas, categorias, contacto, mant, recup: recup || {}, audit: { items, lastHash } };
 }
 
 // Escritura directa (write-through). Fire-and-forget desde server.js.

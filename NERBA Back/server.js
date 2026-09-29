@@ -19,7 +19,7 @@ const PORT = parseInt(process.env.PORT || process.argv[2] || '8080', 10);
 const db = require('./db');
 let DB_MODE = false;
 // Mirrors en memoria cuando hay DB (lecturas sync, escritura write-through).
-let cProductos = null, cMarcas = null, cCategorias = null, cContacto = null, cMant = null, cAudit = null;
+let cProductos = null, cMarcas = null, cCategorias = null, cContacto = null, cMant = null, cAudit = null, cRecup = null;
 
 // Carpeta del frontend: Railway usa FRONT_DIR; local usa carpeta hermana.
 const CANDIDATES = [
@@ -28,11 +28,7 @@ const CANDIDATES = [
 ].filter(Boolean);
 const FRONT_DIR = CANDIDATES.find((p) => { try { return fs.existsSync(p); } catch { return false; } }) || path.resolve(__dirname, '../NERBA Front');
 const FRONTEND_URL = String(process.env.FRONTEND_URL || '').trim().replace(/\/$/, '');
-  // Falla seguro. Antes era !== '0', o sea que si la variable NO existia el
-  // seed se activaba solo: con el repo publico, cualquiera con acceso de lectura
-  // podia entrar a produccion como SUPERADMIN con la contrasena del seed.
-  // Ahora solo se siembran si se pide de forma explicita con SEED_DEMO=1.
-  const SEED_DEMO = process.env.SEED_DEMO === '1';
+const SEED_DEMO = process.env.SEED_DEMO !== '0';
 // SERVE_STATIC=0: solo API (deploy separado: frontend en Netlify). Local: 1.
 const SERVE_STATIC = process.env.SERVE_STATIC !== '0';
 // Recuperacion de contrasena por correo (Resend). Sin RESEND_API_KEY la
@@ -454,17 +450,7 @@ function userByToken(token) {
   if (u && u.activo === false) return null;
   return u;
 }
-// Personal interno, sin zona: puede entrar a cualquier panel.
-function isStaff(user) { return user && (user.rol === 'ADMIN' || user.rol === 'SUPERADMIN'); }
-// Personal interno con zona: puede entrar a su panel pero no tocar la de otro.
-// PRODUCTOS_ELECTRONICOS antes caia dentro de isStaff(), y con eso el endpoint
-// /api/admin/overview y el CRUD de productos/marcas/categorias le dejaban
-// modificar el catalogo del ADMIN. La zona es de interfaz, pero la autorizacion
-// tiene que ser del servidor.
-function isZoned(user) { return user && user.rol === 'PRODUCTOS_ELECTRONICOS'; }
-// Administracion del catalogo global. El rol de electronica queda fuera: su
-// catalogo propio lo maneja /api/productos con area=PRODUCTOS_ELECTRONICOS.
-function isCatalogAdmin(user) { return user && (user.rol === 'ADMIN' || user.rol === 'SUPERADMIN'); }
+function isStaff(user) { return user && (user.rol === 'ADMIN' || user.rol === 'SUPERADMIN' || user.rol === 'PRODUCTOS_ELECTRONICOS'); }
 // Alcance de cotizaciones por rol: SUPERADMIN todo, ADMIN todo menos PE,
 // PROYECTOS_ESPECIALES solo su área, PRODUCTOS_ELECTRONICOS solo la suya,
 // CLIENTE solo las propias. Nada fuera de su zona.
@@ -472,10 +458,7 @@ function quoteScope(u, c) {
   if (!u || !c) return false;
   if (u.rol === 'SUPERADMIN') return true;
   var area = c.area || 'GENERAL';
-  // El admin cubre seguridad, CCTV, Alarmas y Biometricos: todo menos las dos
-  // zonas que tienen panel propio. Antes solo excluia PROYECTOS_ESPECIALES, asi
-  // que tambien podia ver, cambiar y borrar cotizaciones de electronica.
-  if (u.rol === 'ADMIN') return area !== 'PROYECTOS_ESPECIALES' && area !== 'PRODUCTOS_ELECTRONICOS';
+  if (u.rol === 'ADMIN') return area !== 'PROYECTOS_ESPECIALES';
   if (u.rol === 'PROYECTOS_ESPECIALES') return area === 'PROYECTOS_ESPECIALES';
   if (u.rol === 'PRODUCTOS_ELECTRONICOS') {
     return area === 'PRODUCTOS_ELECTRONICOS' || c.tipoInmueble === 'Productos Electrónicos';
@@ -535,22 +518,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ----- API -----
-  if (pathname === '/api/health') {
-    // Reporta el modo de arranque sin exponer datos: Railway usa esto para el
-    // healthcheck, y sirve para confirmar de un vistazo si la persistencia
-    // quedo en Postgres o cayo al fallback JSON.
-    var demoVivas = 0;
-    for (var de in users) {
-      if (Object.prototype.hasOwnProperty.call(users, de) && /@(nerba\.mx)$/i.test(String(de))) demoVivas++;
-    }
-    return sendJSON(res, 200, {
-      ok: true,
-      service: 'grupo-nerba-hidalgo',
-      port: PORT,
-      db: db.isEnabled() ? 'postgres' : 'json',
-      demoCuentas: demoVivas,
-    }, req);
-  }
+  if (pathname === '/api/health') return sendJSON(res, 200, { ok: true, service: 'grupo-nerba-hidalgo', port: PORT }, req);
   if (pathname === '/api/config') return sendJSON(res, 200, { googleClientId: GOOGLE_CLIENT_ID }, req);
   if (pathname === '/api/catalogo') return sendJSON(res, 200, CATALOGO, req);
 
@@ -707,6 +675,88 @@ if (pathname === '/api/login' && req.method === 'POST') {
       persistSessions();
     }
     return sendJSON(res, 200, { ok: true });
+  }
+
+  // ----- recuperacion de contrasena (modal login + restablecer.html) -----
+  // Sin SMTP en el proyecto: el enlace se imprime en el log del servidor
+  // (Railway: Deploy Logs) para enviarlo por WhatsApp, y con
+  // RECOVERY_DEBUG=1 se devuelve en la respuesta para probar.
+  const recupFile = path.join(DATA_DIR, 'recuperacion.json');
+  const RECUP_TTL_MS = 60 * 60 * 1000;
+  const RECOVERY_DEBUG = process.env.RECOVERY_DEBUG === '1';
+  function loadRecup() {
+    if (DB_MODE && cRecup) return cRecup;
+    let o = {};
+    try { if (fs.existsSync(recupFile)) o = JSON.parse(fs.readFileSync(recupFile, 'utf8')) || {}; } catch {}
+    // Purgar vencidos al leer
+    let dirty = false;
+    for (const k of Object.keys(o)) {
+      if (!o[k] || Number(o[k].expiresAt) <= Date.now()) { delete o[k]; dirty = true; }
+    }
+    if (dirty) saveJSON(recupFile, o);
+    if (DB_MODE) cRecup = o;
+    return o;
+  }
+  function persistRecup(o) {
+    saveJSON(recupFile, o);
+    if (DB_MODE) { cRecup = o; db.wt(db.replaceAll('kv_recuperacion', o)); }
+  }
+  function frontBase() { return FRONTEND_URL || ''; }
+
+  if (pathname === '/api/recuperar' && req.method === 'POST') {
+    if (!rateLimit(req, 10)) return sendJSON(res, 429, { error: 'Demasiados intentos. Espera unos minutos.' }, req);
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch (e) { if (e && e.code === 413) return sendJSON(res, 413, { error: 'Datos muy grandes' }, req); body = {}; }
+    const email = String(body.email || '').trim().toLowerCase();
+    // Respuesta genérica siempre: no revelar si el correo existe.
+    const GENERICO = { ok: true, mensaje: 'Si ese correo está registrado, te enviamos un enlace.' };
+    if (!email || !email.includes('@')) return sendJSON(res, 200, GENERICO, req);
+    const u = users[email];
+    if (u && u.activo !== false) {
+      const store = loadRecup();
+      const token = crypto.randomBytes(32).toString('hex');
+      store[token] = { email, expiresAt: Date.now() + RECUP_TTL_MS, createdAt: new Date().toISOString() };
+      persistRecup(store);
+      const enlace = frontBase() + '/restablecer.html?token=' + token;
+      console.log('RECUPERAR ' + email + ' -> ' + enlace);
+      logAudit(req, { modulo: 'accesos', evento: 'recuperar-solicitud', detalle: email, usuario: email });
+      if (RECOVERY_DEBUG) return sendJSON(res, 200, { ...GENERICO, enlace }, req);
+    }
+    return sendJSON(res, 200, GENERICO, req);
+  }
+
+  if (pathname === '/api/restablecer/verificar' && req.method === 'POST') {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const token = String(body.token || '').trim();
+    const t = token && loadRecup()[token];
+    if (!t || Number(t.expiresAt) <= Date.now()) return sendJSON(res, 410, { error: 'El enlace venció o ya se usó.' }, req);
+    return sendJSON(res, 200, { ok: true, email: t.email }, req);
+  }
+
+  if (pathname === '/api/restablecer' && req.method === 'POST') {
+    if (!rateLimit(req, 15)) return sendJSON(res, 429, { error: 'Demasiados intentos. Espera unos minutos.' }, req);
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch (e) { if (e && e.code === 413) return sendJSON(res, 413, { error: 'Datos muy grandes' }, req); body = {}; }
+    const token = String(body.token || '').trim();
+    const pass = String(body.password || '');
+    const store = loadRecup();
+    const t = token && store[token];
+    if (!t || Number(t.expiresAt) <= Date.now()) return sendJSON(res, 410, { error: 'El enlace venció o ya se usó.' }, req);
+    if (pass.length < 6) return sendJSON(res, 400, { error: 'La contraseña debe tener al menos 6 caracteres.' }, req);
+    const u = users[String(t.email || '').toLowerCase()];
+    if (!u || u.activo === false) { delete store[token]; persistRecup(store); return sendJSON(res, 404, { error: 'Cuenta no disponible.' }, req); }
+    u.passHash = hashPassword(pass);
+    persistUsers();
+    delete store[token];
+    persistRecup(store);
+    // Cerrar demás sesiones por seguridad (lo que promete restablecer.html)
+    for (const k of Object.keys(sessions)) {
+      if (sessions[k] && String(sessions[k].email || '').toLowerCase() === u.email.toLowerCase()) delete sessions[k];
+    }
+    persistSessions();
+    logAudit(req, { modulo: 'accesos', evento: 'recuperar-ok', detalle: u.email, usuario: u.email });
+    return sendJSON(res, 200, { ok: true }, req);
   }
 
   if (pathname === '/api/me') {
@@ -1114,7 +1164,7 @@ if (pathname === '/api/login' && req.method === 'POST') {
     let body = {};
     try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
     const u = userByToken(getToken(req));
-    if (!u || !isCatalogAdmin(u)) return sendJSON(res, 403, { error: 'Solo administracion de catalogo' });
+    if (!u || !isStaff(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
     if (!body.title || !String(body.title).trim()) return sendJSON(res, 400, { error: 'El titulo es obligatorio' });
     if (imagenPesada(body)) return sendJSON(res, 400, { error: 'Imagen muy pesada (máx 2MB c/u, se comprimen solas al subir)' });
     const lista = loadProductos();
@@ -1134,7 +1184,7 @@ if (pathname === '/api/login' && req.method === 'POST') {
     let body = {};
     try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
     const u = userByToken(getToken(req));
-    if (!u || !isCatalogAdmin(u)) return sendJSON(res, 403, { error: 'Solo administracion de catalogo' });
+    if (!u || !isStaff(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
     const desde = String(body.desde || ''); // 'marca' | 'tipo'
     const code = slugMarca(body.code || '');
     const lista = loadProductos();
@@ -1163,7 +1213,7 @@ if (pathname === '/api/login' && req.method === 'POST') {
     let body = {};
     try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
     const u = userByToken(getToken(req));
-    if (!u || !isCatalogAdmin(u)) return sendJSON(res, 403, { error: 'Solo administracion de catalogo' });
+    if (!u || !isStaff(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
     const lista = loadProductos();
     const idx = lista.findIndex((p) => p.id === mProd[1]);
     if (idx < 0) return sendJSON(res, 404, { error: 'No encontrado' });
@@ -1221,7 +1271,7 @@ if (pathname === '/api/login' && req.method === 'POST') {
     let body = {};
     try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
     const u = userByToken(getToken(req));
-    if (!u || !isCatalogAdmin(u)) return sendJSON(res, 403, { error: 'Solo administracion de catalogo' });
+    if (!u || !isStaff(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
     const code = slugMarca(decodeURIComponent(mMarca[1] || ''));
     const over = loadMarcas();
     if (req.method === 'DELETE') {
@@ -1273,7 +1323,7 @@ if (pathname === '/api/login' && req.method === 'POST') {
     let body = {};
     try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
     const u = userByToken(getToken(req));
-    if (!u || !isCatalogAdmin(u)) return sendJSON(res, 403, { error: 'Solo administracion de catalogo' });
+    if (!u || !isStaff(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
     const code = String(decodeURIComponent(mCat[1] || '')).trim().slice(0, 60) || 'general';
     const usadas = loadProductos().filter((p) => String(p.categoryCode || 'general') === code);
     if (usadas.length) {
@@ -1440,6 +1490,13 @@ async function start() {
       if (s.contacto.length) cContacto = s.contacto;
       if (s.mant.length) cMant = s.mant;
       if (s.audit.items.length) cAudit = s.audit;
+      if (s.recup && Object.keys(s.recup).length) {
+        const vivos = {};
+        for (const [k, v] of Object.entries(s.recup)) {
+          if (v && Number(v.expiresAt) > Date.now()) vivos[k] = v;
+        }
+        if (Object.keys(vivos).length) cRecup = vivos;
+      }
       DB_MODE = true;
       console.log('Postgres conectado: DB como fuente de verdad.');
     } catch (e) {
