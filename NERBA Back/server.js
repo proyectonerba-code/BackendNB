@@ -1191,15 +1191,26 @@ if (pathname === '/api/login' && req.method === 'POST') {
   function loadServicios() {
     if (DB_MODE && cServicios) return cServicios;
     try {
-      if (fs.existsSync(serviciosFile)) { const l = JSON.parse(fs.readFileSync(serviciosFile, 'utf8')); if (DB_MODE) cServicios = l; return l; }
+      if (fs.existsSync(serviciosFile)) { const l = JSON.parse(fs.readFileSync(serviciosFile, 'utf8')); if (DB_MODE) cServicios = l; return normalizaOrden(l); }
       if (fs.existsSync(serviciosSeed)) {
         const seed = JSON.parse(fs.readFileSync(serviciosSeed, 'utf8'));
         saveJSON(serviciosFile, seed);
         if (DB_MODE) cServicios = seed;
-        return seed;
+        return normalizaOrden(seed);
       }
     } catch {}
     return [];
+  }
+  // Los servicios guardados antes de que existiera el campo 'orden' llegan sin
+  // el. Se les asigna por posicion la primera vez, y se guarda, para que las
+  // flechas del panel partan de un orden estable en vez de.sort alfabetico.
+  function normalizaOrden(lista) {
+    if (!Array.isArray(lista) || !lista.length) return lista;
+    const falta = lista.some((x) => !Number.isFinite(Number(x.orden)));
+    if (!falta) return lista;
+    ordenarServicios(lista).forEach((x, i) => { x.orden = i + 1; });
+    persistServicios(lista);
+    return lista;
   }
   function persistServicios(list) {
     saveJSON(serviciosFile, list);
@@ -1218,14 +1229,21 @@ if (pathname === '/api/login' && req.method === 'POST') {
       description: s(b.description).slice(0, 600),
       image: s(b.image).slice(0, 2000000),
       href: s(b.href).slice(0, 200),
+      // Posicion en el carrusel. Lo mueve el staff con las flechas del panel.
+      orden: Math.max(0, Math.min(9999, parseInt(b.orden, 10) || 0)),
       activo: b.activo === undefined ? true : (b.activo === true || String(b.activo).toLowerCase() === 'true'),
     };
   }
   function ordenarServicios(lista) {
-    // Orden estable: primero los activos, luego por titulo.
+    // Orden estable: primero los activos, luego por el campo 'orden', que es el
+    // que mueve el staff con las flechas del panel. El titulo solo desempata,
+    // para que dos servicios con el mismo orden no salten de lado.
     return lista.slice().sort((a, b) => {
       const aa = a.activo === false ? 1 : 0, ba = b.activo === false ? 1 : 0;
       if (aa !== ba) return aa - ba;
+      const oa = Number.isFinite(Number(a.orden)) ? Number(a.orden) : 0;
+      const ob = Number.isFinite(Number(b.orden)) ? Number(b.orden) : 0;
+      if (oa !== ob) return oa - ob;
       return String(a.title || '').localeCompare(String(b.title || ''), 'es');
     });
   }
@@ -1251,12 +1269,41 @@ if (pathname === '/api/login' && req.method === 'POST') {
       .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'servicio';
     let id = base, n = 2;
     while (lista.some((x) => x.id === id)) id = base + '-' + (n++);
+    // Si el staff no dijo en que posicion va, se va al final. Asi lo nuevo no
+    // se cuela al principio de un carrusel que el admin ordeno a mano.
+    if (!body.orden && body.orden !== 0) {
+      const max = lista.reduce((m, x) => Math.max(m, Number(x.orden) || 0), 0);
+      srv.orden = max + 1;
+    }
     const nuevo = { id, ...srv };
     lista.push(nuevo);
     persistServicios(lista);
     logAudit(req, { modulo: 'servicios', evento: 'alta', detalle: nuevo.title });
     return sendJSON(res, 201, nuevo);
   }
+  // Reordena varias publicaciones de golpe. Es lo que llaman las flechas del
+// panel: llegan los ids en el orden que el admin quiere y se renumeran 1..n.
+if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const u = userByToken(getToken(req));
+    if (!u || !isServiciosAdmin(u)) return sendJSON(res, 403, { error: 'Solo administracion' }, req);
+    const orden = Array.isArray(body.orden) ? body.orden : [];
+    if (!orden.length) return sendJSON(res, 400, { error: 'No se recibio el orden nuevo' }, req);
+    const lista = loadServicios();
+    const porId = {};
+    for (const x of lista) porId[x.id] = x;
+    const cambios = [];
+    orden.forEach((id, i) => {
+      const s = porId[id];
+      // Un id que no existe se ignora en vez de tumbar toda la operacion.
+      if (s && Number(s.orden || 0) !== i + 1) { s.orden = i + 1; cambios.push(s.title || id); }
+    });
+    persistServicios(lista);
+    logAudit(req, { modulo: 'servicios', evento: 'orden', detalle: cambios.length ? cambios.join(' | ') : 'sin cambios' });
+    return sendJSON(res, 200, { ok: true, servicios: ordenarServicios(lista) });
+  }
+
   const mServ = /^\/api\/servicios\/([^/]+)$/.exec(pathname);
   if (mServ && (req.method === 'PUT' || req.method === 'DELETE')) {
     let body = {};
