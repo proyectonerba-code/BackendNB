@@ -8,15 +8,17 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-// Modelos de Gemini que existen en la API: gemini-2.5-flash (recomendado),
-// gemini-2.5-pro, gemini-2.0-flash. El default anterior "gemini-3.8-flash"
-// no existe y hacia fallar cada mensaje contra el fallback.
-const MODEL = String(process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim();
+// Modelos de Gemini: gemini-3.8-flash (actual, recomendado para llaves nuevas),
+// gemini-2.5-flash, gemini-2.5-pro, gemini-2.0-flash. Ojo: Google retira los
+// viejos para cuentas nuevas (2.5-flash ya da 404), asi que el default es 3.8.
+const MODEL = String(process.env.GEMINI_MODEL || 'gemini-3.8-flash').trim();
 // "off" = no mandar thinkingConfig (default, compatible con cualquier modelo).
-// "budget" = mandar thinkingBudget (modelos 2.5). "low|medium|high" = thinkingLevel.
-const THINKING_LEVEL = ['off', 'budget', 'low', 'medium', 'high'].includes(String(process.env.GEMINI_THINKING_LEVEL || 'off').toLowerCase())
-  ? String(process.env.GEMINI_THINKING_LEVEL || 'off').toLowerCase()
-  : 'off';
+// "budget" = thinkingBudget (modelos 2.5). "low|medium|high" = thinkingLevel
+// (familia 3.x). Si el modelo rechaza el parametro, la llamada falla y el
+// chat cae al fallback: en ese caso pon GEMINI_THINKING_LEVEL=off.
+const THINKING_LEVEL = ['off', 'budget', 'low', 'medium', 'high'].includes(String(process.env.GEMINI_THINKING_LEVEL || 'low').toLowerCase())
+  ? String(process.env.GEMINI_THINKING_LEVEL || 'low').toLowerCase()
+  : 'low';
 const API_KEY = String(process.env.GEMINI_API_KEY || '').trim();
 const NERBOT_STAFF = process.env.NERBOT_STAFF === '1';
 const MAX_HISTORY = 24;
