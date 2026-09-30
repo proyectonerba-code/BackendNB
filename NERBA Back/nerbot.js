@@ -310,32 +310,85 @@ async function saveFeedback(sessionId, userEmail, messageId, rating, note) {
   persistLocal();
 }
 
+// ---------- Cache en memoria ----------
+// Varios clientes hacen las MISMAS preguntas ("cuanto cuesta un kit de 4
+// camaras"). Antes cada quien quemaba una llamada a Gemini, y eso es justo lo
+// que dispara el 503. Con esta capa la segunda vez que alguien pregunta lo
+// mismo se responde al instante sin gastar cuota. La clave normaliza
+// mayusculas, acentos y puntuacion, y se combina con el area para no
+// mezclar temas.
+const CACHE = new Map();      // clave -> { out, expira }
+const EN_VUELO = new Map();   // clave -> Promise (una sola llamada por clave)
+const CACHE_TTL_MS = parseInt(process.env.NERBOT_CACHE_MIN || '180', 10) * 60000;
+const CACHE_MAX = parseInt(process.env.NERBOT_CACHE_MAX || '500', 10);
+
+function cacheKey(question, area, picks) {
+  const q = normalize(question).replace(/[^a-z0-9 ]+/g, '').replace(/\s+/g, ' ').trim();
+  const p = (picks || []).slice(0, 4).map((x) => x.id).join(',');
+  return area + '|' + q + '|' + p;
+}
+function cacheGet(k) {
+  const e = CACHE.get(k);
+  if (!e) return null;
+  if (e.expira < Date.now()) { CACHE.delete(k); return null; }
+  return e.out;
+}
+function cacheSet(k, out) {
+  if (CACHE.size >= CACHE_MAX) {
+    const sobra = CACHE.keys().next().value;
+    if (sobra !== undefined) CACHE.delete(sobra);
+  }
+  CACHE.set(k, { out, expira: Date.now() + CACHE_TTL_MS });
+}
+
 // Respuesta de emergencia cuando Gemini no esta disponible. Antes repetia el
-// mismo texto genérico siempre (por eso el chat se sintia tonto durante las
-// caidas del modelo). Ahora usa lo que el cliente ya dijo para no pedir dos
-// veces lo mismo, y nombra el area detectada.
+// mismo texto generico siempre y se sentia como un loop. Ahora rota entre
+// varias frases del mismo grupo, segun el turno de la conversacion, y usa lo
+// que el cliente ya dijo.
+const FALLBACK = {
+  aviso: [
+    'La IA está saturada ahora mismo. ',
+    'Dame un segundo, hay mucha demanda en el servicio. ',
+    'Por carga del servicio, la IA va lenta. ',
+    'La IA está ocupada en este momento. ',
+  ],
+  SEGURIDAD: [
+    (n) => (n ? 'Para seguridad te veo: ' + n + '. ¿Es para casa, oficina o negocio?' : '¿Lo necesitas para casa, oficina o negocio? Con eso te oriento la videovigilancia.'),
+    (n) => (n ? 'Te sirven ' + n + '. ¿Cuántos lugares quieres cubrir: entradas, estacionamiento, patios?' : '¿Cuántas cámaras tienes instaladas hoy o arrancas de cero?'),
+  ],
+  PORTONES: [
+    () => '¿Qué tipo de portón manejas y de qué ancho?',
+    () => 'Dame el ancho del portón y si es corredizo o levadizo, con eso te cotizo.',
+  ],
+  MANTENIMIENTO: [
+    () => '¿Qué equipo está fallando y desde cuándo?',
+    () => '¿Hace qué exactamente: no enciende, grita o no detecta movimiento?',
+  ],
+  VENTA_PARTES: [
+    (n) => (n ? 'Encontré ' + n + '. ¿Cuál buscas?' : '¿Qué pieza necesitas? Si tienes el modelo, compártelo.'),
+    () => '¿Es refacción de instalación o componente electrónico? Con el modelo te ubico la pieza.',
+  ],
+  PRODUCTOS_ELECTRONICOS: [
+    (n) => (n ? 'Encontré ' + n + '. ¿Cuál buscas?' : '¿Qué componente necesitas? Comparte marca o modelo.'),
+    () => '¿Lo necesitas para un proyecto o es reparación? Con eso te oriento.',
+  ],
+  PROYECTOS_ESPECIALES: [
+    () => '¿Es planta, nave, bodega o edificio? Con el alcance te armo la propuesta.',
+    () => '¿Qué superficie y qué nivel de riesgo manejas? Así dimensiono el sistema.',
+  ],
+  GENERAL: [
+    () => '¿Te interesa seguridad (CCTV, alarmas), portones automáticos o mantenimiento?',
+    () => '¿Qué necesitas proteger: tu casa, una oficina o un negocio?',
+  ],
+};
+
 function fallbackReply(question, area, picks, history) {
+  const grupo = FALLBACK[area] || FALLBACK.GENERAL;
+  const turno = (history || []).filter((m) => m.role === 'user').length;
+  const aviso = FALLBACK.aviso[turno % FALLBACK.aviso.length];
+  const linea = grupo[turno % grupo.length];
   const names = picks.slice(0, 3).map((p) => p.title).filter(Boolean);
-  const asked = history || [];
-  const yaHablo = asked.some((m) => m.role === 'user');
-  const errorIA = 'La IA está saturada en este momento. ';
-  if (area === 'SEGURIDAD') {
-    if (yaHablo) {
-      const base = names.length ? 'Te sirven ' + names.join(', ') + '. ' : '';
-      return errorIA + base + 'Para dimensionar bien necesito un dato: ¿cuántos lugares quieres cubrir (estacionamiento, entradas, patios) o cuántas cámaras tienes ya?';
-    }
-    if (names.length) return errorIA + 'Para seguridad te veo: ' + names.join(', ') + '. ¿Es para casa, oficina o negocio?';
-    return errorIA + '¿Lo necesitas para casa, oficina o negocio? Con eso te oriento el sistema de videovigilancia.';
-  }
-  if (area === 'PORTONES') return errorIA + (yaHablo ? '¿El portón es corredizo o levadizo, y de qué ancho?' : '¿Qué tipo de portón manejas y de qué ancho?');
-  if (area === 'MANTENIMIENTO') return errorIA + (yaHablo ? '¿Desde cuándo falla y hace qué exactamente (no enciende, grita, no detecta)?' : '¿Qué equipo está fallando y desde cuándo?');
-  if (area === 'VENTA_PARTES' || area === 'PRODUCTOS_ELECTRONICOS') {
-    if (names.length) return errorIA + 'Encontré ' + names.join(', ') + ' en el catálogo. ¿Cuál buscas o qué modelo necesitas?';
-    return errorIA + '¿Qué pieza o componente necesitas? Si tienes el modelo, compártelo.';
-  }
-  if (area === 'PROYECTOS_ESPECIALES') return errorIA + 'Para un proyecto especial necesito saber el inmueble y el alcance. ¿Es planta, nave, bodega o edificio?';
-  if (question) return errorIA + '¿Te interesa seguridad (CCTV, alarmas), portones automáticos o mantenimiento?';
-  return 'Hola, soy NerBot de Grupo NERBA HIDALGO. ¿Qué necesitas proteger: tu casa, una oficina o un negocio?';
+  return aviso + linea(names);
 }
 
 async function callGemini({question, history, catalog, area, picks, user}) {
@@ -539,22 +592,59 @@ async function message({sessionId, user, question, catalog}) {
   const picks = chooseCatalog(cleanQuestion, products, serverArea);
   const userMessageId = await saveMessage(sid, email, 'user', cleanQuestion, serverArea);
 
-  let answer;
+  // Cache: si la misma pregunta ya se respondio, se reutiliza. Varias personas
+  // preguntando lo mismo no gastan cuota, y eso baja la presion sobre Gemini.
+  // La clave ignora el historial, asi que solo aplica a preguntas autonomousas;
+  // en una conversacion ya avanzada la respuesta cacheada seria incorrecta.
+  const conversacionActiva = history.length > 0;
+  const clave = cacheKey(cleanQuestion, serverArea, picks);
+  const sinHistorial = !conversacionActiva;
+  let answer = null;
   let source = 'gemini';
-  try {
-    const generated = await callGemini({
-      question: cleanQuestion,
-      history,
-      catalog: products,
-      area: serverArea,
-      picks,
-      user,
-    });
-    answer = normalizeAnswer(generated, serverArea, picks);
-  } catch (e) {
-    source = 'fallback';
-    console.log('NerBot Gemini: ' + e.message);
-    answer = normalizeAnswer({ reply: fallbackReply(cleanQuestion, serverArea, picks, history), area: serverArea, intent: 'fallback', confidence: 0.2, needs_human: true, suggestions: [], product_ids: picks.map((p) => p.id).slice(0, 6) }, serverArea, picks);
+
+  if (sinHistorial) {
+    const guardado = cacheGet(clave);
+    if (guardado) {
+      answer = guardado;
+      source = 'cache';
+    }
+  }
+
+  if (!answer) {
+    // Una sola llamada por clave: si tres personas preguntan lo mismo al mismo
+    // tiempo, esperan la misma promesa en vez de disparar tres requests.
+    const tarea = async () => {
+      try {
+        const generated = await callGemini({
+          question: cleanQuestion,
+          history,
+          catalog: products,
+          area: serverArea,
+          picks,
+          user,
+        });
+        return normalizeAnswer(generated, serverArea, picks);
+      } catch (e) {
+        console.log('NerBot Gemini: ' + e.message);
+        return normalizeAnswer({ reply: fallbackReply(cleanQuestion, serverArea, picks, history), area: serverArea, intent: 'fallback', confidence: 0.2, needs_human: true, suggestions: [], product_ids: picks.map((p) => p.id).slice(0, 6) }, serverArea, picks);
+      }
+    };
+
+    if (sinHistorial) {
+      if (!EN_VUELO.has(clave)) {
+        EN_VUELO.set(clave, tarea().then((r) => {
+          // No se cachean las respuestas de emergencia: si Gemini se recupera,
+          // la siguiente pregunta debe recibir la respuesta real.
+          if (r.intent !== 'fallback') cacheSet(clave, r);
+          EN_VUELO.delete(clave);
+          return r;
+        }).catch((e) => { EN_VUELO.delete(clave); throw e; }));
+      }
+      answer = await EN_VUELO.get(clave);
+    } else {
+      answer = await tarea();
+    }
+    if (answer && answer.intent === 'fallback') source = 'fallback';
   }
 
   const finalReply = answer.reply;
@@ -615,4 +705,6 @@ module.exports = {
   thinkingLevel: THINKING_LEVEL,
   staff: NERBOT_STAFF,
   configured: !!API_KEY,
+  cacheSize: CACHE.size,
+  limpiarCache() { CACHE.clear(); },
 };
