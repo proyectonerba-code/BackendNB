@@ -8,21 +8,18 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-  // Modelos de Gemini, del mas estable al mas potente. El 503 "high demand"
-  // viene del modelo 3.8-flash: si se repite, cambia GEMINI_MODEL a uno de
-  // estos dos y la respuesta vuelve a ser de verdad (no el fallback).
-  const MODEL = String(process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim();
-// "off" = no mandar thinkingConfig (default, compatible con cualquier modelo).
+// Modelo configurado. Los de reserva se prueban solos en orden si este da 404
+// (Google los retira por llave/region y el chat se quedaria sin IA).
+const MODEL = String(process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim();
+// "off" = no mandar thinkingConfig (compatible con cualquier modelo).
 // "budget" = thinkingBudget (modelos 2.5). "low|medium|high" = thinkingLevel
-// (familia 3.x). Si el modelo rechaza el parametro, la llamada falla y el
-// chat cae al fallback: en ese caso pon GEMINI_THINKING_LEVEL=off.
-const THINKING_LEVEL = ['off', 'budget', 'low', 'medium', 'high'].includes(String(process.env.GEMINI_THINKING_LEVEL || 'low').toLowerCase())
-  ? String(process.env.GEMINI_THINKING_LEVEL || 'low').toLowerCase()
-  : 'low';
+// (familia 3.x). Si el modelo rechaza el parametro la llamada falla y el chat
+// cae al fallback: en ese caso pon GEMINI_THINKING_LEVEL=off.
+const THINKING_LEVEL = ['off', 'budget', 'low', 'medium', 'high'].includes(String(process.env.GEMINI_THINKING_LEVEL || 'budget').toLowerCase())
+  ? String(process.env.GEMINI_THINKING_LEVEL || 'budget').toLowerCase()
+  : 'budget';
 const API_KEY = String(process.env.GEMINI_API_KEY || '').trim();
-// Si el modelo configurado responde 404 (retirado o no habilitado), se prueban
-// estos en orden antes de rendirse con el fallback.
-const MODELOS_ALT = ['gemini-2.0-flash', 'gemini-flash-latest'];
+const MODELOS_ALT = ['gemini-2.0-flash', 'gemini-flash-latest', 'gemini-1.5-flash'];
 const NERBOT_STAFF = process.env.NERBOT_STAFF === '1';
 const MAX_HISTORY = 24;
 const MAX_MESSAGE = 1200;
@@ -454,9 +451,15 @@ async function callGemini({question, history, catalog, area, picks, user}) {
   if (ultimo && ultimo.role === 'user') ultimo.parts[0].text += '\n\n' + actual.parts[0].text;
   else contents.push(actual);
 
-  async function llamaGemini(reintento) {
+  // Candidatos en orden: el configurado y despues los de reserva. indice
+  // avanza solo cuando un modelo da 404 (retirado para esta llave); los
+  // reintentos por 503 se hacen sobre el MISMO modelo.
+  const candidatos = [MODEL].concat(MODELOS_ALT.filter((m) => m !== MODEL));
+
+  async function llamaGemini(indice, intento) {
+    const modelo = candidatos[indice];
     const response = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(MODEL) + ':generateContent',
+      'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(modelo) + ':generateContent',
       {
         method: 'POST',
         headers: {
@@ -487,30 +490,22 @@ async function callGemini({question, history, catalog, area, picks, user}) {
     );
 
     const raw = await response.text();
-    // 503/529 = saturacion temporal de Gemini. Antes un solo reintento, que en
-    // los picos de demanda no alcanzaba y caia al fallback (respuesta tonta).
-    // Ahora se reintenta varias veces con espera creciente.
-    if ((response.status === 503 || response.status === 429 || response.status === 529) && reintento < 3) {
-      await new Promise(function (r) { setTimeout(r, 1500 * (reintento + 1)); });
-      return llamaGemini(reintento + 1);
+    // 503/429/529 = saturacion temporal: se reintenta el MISMO modelo con
+    // espera creciente antes de rendirse con el fallback.
+    if ((response.status === 503 || response.status === 429 || response.status === 529) && intento < 3) {
+      await new Promise(function (r) { setTimeout(r, 1500 * (intento + 1)); });
+      return llamaGemini(indice, intento + 1);
     }
-    // 404 = ese modelo no existe o ya no esta disponible para esta llave. Se
-    // prueban los de reserva para no quedarse sin IA por una variable mal puesta.
-    if (response.status === 404 && reintento < MODELOS_ALT.length) {
-      const siguiente = MODELOS_ALT[reintento];
-      console.log('NerBot: ' + MODEL + ' no disponible, pruebo ' + siguiente);
-      const antes = MODEL;
-      MODEL = siguiente;
-      try {
-        return await llamaGemini(reintento + 1);
-      } finally {
-        MODEL = antes;
-      }
+    // 404 = ese modelo no existe o ya no esta disponible para esta llave.
+    // Se avanza al siguiente candidato para no quedarse sin IA.
+    if (response.status === 404 && indice + 1 < candidatos.length) {
+      console.log('NerBot: ' + modelo + ' no disponible para esta llave, pruebo ' + candidatos[indice + 1]);
+      return llamaGemini(indice + 1, 0);
     }
     return rawResponse(raw, response);
   }
 
-  return llamaGemini(false);
+  return llamaGemini(0, 0);
 
   function rawResponse(raw, response) {
     if (!response.ok) {
