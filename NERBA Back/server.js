@@ -1189,7 +1189,10 @@ if (pathname === '/api/login' && req.method === 'POST') {
   const serviciosFile = path.join(DATA_DIR, 'servicios.json');
   const serviciosSeed = path.join(__dirname, 'servicios.seed.json');
   function loadServicios() {
-    if (DB_MODE && cServicios) return cServicios;
+    // Se normaliza tambien desde la cache de Postgres: si no, los servicios que
+    // ya estaban guardados sin 'orden' se quedaban en 0 y se adelantaban a los
+    // que el staff si habia ordenado.
+    if (DB_MODE && cServicios) return normalizaOrden(cServicios);
     try {
       if (fs.existsSync(serviciosFile)) { const l = JSON.parse(fs.readFileSync(serviciosFile, 'utf8')); if (DB_MODE) cServicios = l; return normalizaOrden(l); }
       if (fs.existsSync(serviciosSeed)) {
