@@ -349,58 +349,91 @@ async function callGemini({question, history, catalog, area, picks, user}) {
     required: ['reply', 'area', 'intent', 'confidence', 'needs_human', 'suggestions', 'product_ids'],
   };
 
-  const contents = [
-    { role: 'user', parts: [{ text: systemText + '\n\nConsulta actual del cliente: ' + cleanText(question, MAX_MESSAGE) }] },
-    ...historyBlock,
-  ];
-
-  const response = await fetch(
-    'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(MODEL) + ':generateContent',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': API_KEY,
-      },
-      body: JSON.stringify({
-        contents,
-        generationConfig: Object.assign(
-          {
-            responseMimeType: 'application/json',
-            responseSchema: schema,
-            temperature: 0.25,
-          },
-          // thinkingConfig solo se manda si el despliegue lo pide. La forma
-          // exacta depende del modelo: "thinkingLevel" es de la familia 3.x y
-          // "thinkingBudget" de 2.5. Mandarlo por defecto con el modelo
-          // equivocado hace que Gemini responda 400 y caiga al fallback.
-          THINKING_LEVEL === 'budget'
-            ? { thinkingConfig: { thinkingBudget: parseInt(process.env.GEMINI_THINKING_BUDGET || '0', 10) || 0 } }
-            : null
-        ),
-      }),
+  // Gemini exige: el historial va PRIMERO y el mensaje actual al FINAL, con
+  // roles user/model alternados. Antes se mandaba al reves (pregunta actual
+  // primero e historial despues): cuando el historial terminaba en turno del
+  // modelo, la API respondia 400 "Requests ending with a model turn".
+  // Ademas el sistema va en systemInstruction, no como mensaje de usuario.
+  const ordered = historyBlock.slice();
+  while (ordered.length && ordered[0].role !== 'user') ordered.shift();
+  const compact = [];
+  for (const m of ordered) {
+    const last = compact[compact.length - 1];
+    if (last && last.role === m.role) {
+      last.parts[0].text += '\n' + m.parts[0].text;
+    } else {
+      compact.push({ role: m.role, parts: [{ text: m.parts[0].text }] });
     }
-  );
+  }
+  const contents = compact.slice();
+  const actual = { role: 'user', parts: [{ text: 'Consulta actual del cliente: ' + cleanText(question, MAX_MESSAGE) }] };
+  const ultimo = contents[contents.length - 1];
+  if (ultimo && ultimo.role === 'user') ultimo.parts[0].text += '\n\n' + actual.parts[0].text;
+  else contents.push(actual);
 
-  const raw = await response.text();
-  if (!response.ok) {
-    let detail = '';
-    try {
-      const err = JSON.parse(raw);
-      detail = cleanText(err && err.error && err.error.message, 500);
-    } catch {}
-    throw new Error('Gemini ' + response.status + (detail ? ': ' + detail : ''));
+  async function llamaGemini(reintento) {
+    const response = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(MODEL) + ':generateContent',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': API_KEY,
+        },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemText }] },
+          contents,
+          generationConfig: Object.assign(
+            {
+              responseMimeType: 'application/json',
+              responseSchema: schema,
+              temperature: 0.25,
+            },
+            // thinkingConfig solo se manda si el despliegue lo pide. La forma
+            // exacta depende del modelo: "thinkingLevel" es de la familia 3.x y
+            // "thinkingBudget" de 2.5. Mandarlo por defecto con el modelo
+            // equivocado hace que Gemini responda 400 y caiga al fallback.
+            THINKING_LEVEL === 'budget'
+              ? { thinkingConfig: { thinkingBudget: parseInt(process.env.GEMINI_THINKING_BUDGET || '0', 10) || 0 } }
+              : THINKING_LEVEL === 'low' || THINKING_LEVEL === 'medium' || THINKING_LEVEL === 'high'
+                ? { thinkingConfig: { thinkingLevel: THINKING_LEVEL } }
+                : null
+          ),
+        }),
+      }
+    );
+
+    const raw = await response.text();
+    // 503/529 = saturacion temporal de Gemini: un reintento tras 2s.
+    if ((response.status === 503 || response.status === 529) && !reintento) {
+      await new Promise(function (r) { setTimeout(r, 2000); });
+      return llamaGemini(true);
+    }
+    return rawResponse(raw, response);
   }
 
-  let payload;
-  try { payload = JSON.parse(raw); } catch { throw new Error('Respuesta inválida de Gemini'); }
-  const parts = payload && payload.candidates && payload.candidates[0] && payload.candidates[0].content
-    ? payload.candidates[0].content.parts || [] : [];
-  const text = parts.map((p) => p && p.text || '').join('').trim();
-  if (!text) throw new Error('Gemini no devolvió contenido');
-  let out;
-  try { out = JSON.parse(text); } catch { throw new Error('Gemini devolvió JSON inválido'); }
-  return out;
+  return llamaGemini(false);
+
+  function rawResponse(raw, response) {
+    if (!response.ok) {
+      let detail = '';
+      try {
+        const err = JSON.parse(raw);
+        detail = cleanText(err && err.error && err.error.message, 500);
+      } catch {}
+      throw new Error('Gemini ' + response.status + (detail ? ': ' + detail : ''));
+    }
+
+    let payload;
+    try { payload = JSON.parse(raw); } catch { throw new Error('Respuesta inválida de Gemini'); }
+    const parts = payload && payload.candidates && payload.candidates[0] && payload.candidates[0].content
+      ? payload.candidates[0].content.parts || [] : [];
+    const text = parts.map((p) => p && p.text || '').join('').trim();
+    if (!text) throw new Error('Gemini no devolvió contenido');
+    let out;
+    try { out = JSON.parse(text); } catch { throw new Error('Gemini devolvió JSON inválido'); }
+    return out;
+  }
 }
 
 function normalizeAnswer(out, area, picks) {
