@@ -19,7 +19,7 @@ const PORT = parseInt(process.env.PORT || process.argv[2] || '8080', 10);
 const db = require('./db');
 let DB_MODE = false;
 // Mirrors en memoria cuando hay DB (lecturas sync, escritura write-through).
-let cProductos = null, cMarcas = null, cCategorias = null, cContacto = null, cMant = null, cAudit = null, cRecup = null;
+let cProductos = null, cServicios = null, cMarcas = null, cCategorias = null, cContacto = null, cMant = null, cAudit = null, cRecup = null;
 
 // Carpeta del frontend: Railway usa FRONT_DIR; local usa carpeta hermana.
 const CANDIDATES = [
@@ -1116,6 +1116,105 @@ if (pathname === '/api/login' && req.method === 'POST') {
     return sendJSON(res, 200, m);
   }
 
+  // ----- servicios generales del index (carrusel, los edita el staff) -----
+  // Mismo esquema que el catalogo: JSON local + Postgres kv_servicios, y las
+  // mismas guardas de rol (isCatalogAdmin = ADMIN o SUPERADMIN).
+  const serviciosFile = path.join(DATA_DIR, 'servicios.json');
+  const serviciosSeed = path.join(__dirname, 'servicios.seed.json');
+  function loadServicios() {
+    if (DB_MODE && cServicios) return cServicios;
+    try {
+      if (fs.existsSync(serviciosFile)) { const l = JSON.parse(fs.readFileSync(serviciosFile, 'utf8')); if (DB_MODE) cServicios = l; return l; }
+      if (fs.existsSync(serviciosSeed)) {
+        const seed = JSON.parse(fs.readFileSync(serviciosSeed, 'utf8'));
+        saveJSON(serviciosFile, seed);
+        if (DB_MODE) cServicios = seed;
+        return seed;
+      }
+    } catch {}
+    return [];
+  }
+  function persistServicios(list) {
+    saveJSON(serviciosFile, list);
+    if (DB_MODE) {
+      cServicios = list;
+      const byId = {};
+      for (const s of list) byId[s.id] = s;
+      db.wt(db.replaceAll('kv_servicios', byId));
+    }
+  }
+  function cleanServicio(b) {
+    const s = (v) => String(v == null ? '' : v).trim();
+    return {
+      eyebrow: s(b.eyebrow).slice(0, 60),   // etiqueta pequena, ej. "VIDEOS Y MONITOREO"
+      title: s(b.title).slice(0, 120),
+      description: s(b.description).slice(0, 600),
+      image: s(b.image).slice(0, 2000000),
+      href: s(b.href).slice(0, 200),
+      activo: b.activo === undefined ? true : (b.activo === true || String(b.activo).toLowerCase() === 'true'),
+    };
+  }
+  function ordenarServicios(lista) {
+    // Orden estable: primero los activos, luego por titulo.
+    return lista.slice().sort((a, b) => {
+      const aa = a.activo === false ? 1 : 0, ba = b.activo === false ? 1 : 0;
+      if (aa !== ba) return aa - ba;
+      return String(a.title || '').localeCompare(String(b.title || ''), 'es');
+    });
+  }
+  // Solo ADMIN y SUPERADMIN editan los servicios. No se usa isStaff() porque
+  // ese tambien deja pasar a PRODUCTOS_ELECTRONICOS, que solo debe tocar el
+  // catalogo de electronica.
+  function isServiciosAdmin(user) {
+    return !!user && (user.rol === 'ADMIN' || user.rol === 'SUPERADMIN');
+  }
+  if (pathname === '/api/servicios' && req.method === 'GET') {
+    return sendJSON(res, 200, ordenarServicios(loadServicios()));
+  }
+  if (pathname === '/api/servicios' && req.method === 'POST') {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const u = userByToken(getToken(req));
+    if (!u || !isServiciosAdmin(u)) return sendJSON(res, 403, { error: 'Solo administracion' });
+    const srv = cleanServicio(body);
+    if (!srv.title) return sendJSON(res, 400, { error: 'El titulo es obligatorio' });
+    if (srv.image && srv.image.length > 2000000) return sendJSON(res, 400, { error: 'Imagen muy pesada (máx 2MB, se comprime al subir)' });
+    const lista = loadServicios();
+    const base = srv.title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'servicio';
+    let id = base, n = 2;
+    while (lista.some((x) => x.id === id)) id = base + '-' + (n++);
+    const nuevo = { id, ...srv };
+    lista.push(nuevo);
+    persistServicios(lista);
+    logAudit(req, { modulo: 'servicios', evento: 'alta', detalle: nuevo.title });
+    return sendJSON(res, 201, nuevo);
+  }
+  const mServ = /^\/api\/servicios\/([^/]+)$/.exec(pathname);
+  if (mServ && (req.method === 'PUT' || req.method === 'DELETE')) {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const u = userByToken(getToken(req));
+    if (!u || !isServiciosAdmin(u)) return sendJSON(res, 403, { error: 'Solo administracion' });
+    const lista = loadServicios();
+    const idx = lista.findIndex((x) => x.id === mServ[1]);
+    if (idx < 0) return sendJSON(res, 404, { error: 'No encontrado' });
+    if (req.method === 'DELETE') {
+      const quitado = lista.splice(idx, 1)[0];
+      persistServicios(lista);
+      logAudit(req, { modulo: 'servicios', evento: 'baja', detalle: String(quitado.title || mServ[1]) });
+      return sendJSON(res, 200, { ok: true });
+    }
+    const upd = cleanServicio({ ...lista[idx], ...body });
+    if (upd.image && upd.image.length > 2000000) return sendJSON(res, 400, { error: 'Imagen muy pesada (máx 2MB, se comprime al subir)' });
+    if (!upd.title) return sendJSON(res, 400, { error: 'El titulo es obligatorio' });
+    // El id no se deja cambiar desde la API: moverlo dejaria rotas las URLs.
+    lista[idx] = { id: lista[idx].id, ...upd };
+    persistServicios(lista);
+    logAudit(req, { modulo: 'servicios', evento: 'edicion', detalle: upd.title });
+    return sendJSON(res, 200, lista[idx]);
+  }
+
   // ----- catalogo de productos (gestionado por staff, visible en index y catalogo) -----
   const productosFile = path.join(DATA_DIR, 'productos.json');
   const productosSeed = path.join(__dirname, 'productos.seed.json');
@@ -1487,6 +1586,7 @@ async function start() {
         }
       } else if (Object.keys(quotes).length) { db.wt(db.replaceAll('kv_quotes', quotes)); }
       if (s.productos.length) cProductos = s.productos;
+      if (s.servicios && s.servicios.length) cServicios = s.servicios;
       if (Object.keys(s.marcas).length) cMarcas = s.marcas;
       if (Object.keys(s.categorias).length) cCategorias = s.categorias;
       if (s.contacto.length) cContacto = s.contacto;

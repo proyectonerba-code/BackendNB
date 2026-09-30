@@ -28,6 +28,7 @@ async function init() {
   await p.query(`CREATE TABLE IF NOT EXISTS kv_sessions (key TEXT PRIMARY KEY, email TEXT NOT NULL, expires_at BIGINT NOT NULL, data JSONB)`);
   await p.query(`CREATE TABLE IF NOT EXISTS kv_quotes (key TEXT PRIMARY KEY, data JSONB NOT NULL)`);
   await p.query(`CREATE TABLE IF NOT EXISTS kv_productos (key TEXT PRIMARY KEY, data JSONB NOT NULL)`);
+  await p.query(`CREATE TABLE IF NOT EXISTS kv_servicios (key TEXT PRIMARY KEY, data JSONB NOT NULL)`);
   await p.query(`CREATE TABLE IF NOT EXISTS kv_marcas (key TEXT PRIMARY KEY, data JSONB NOT NULL)`);
   await p.query(`CREATE TABLE IF NOT EXISTS kv_categorias (key TEXT PRIMARY KEY, data JSONB NOT NULL)`);
   await p.query(`CREATE TABLE IF NOT EXISTS kv_contacto (key TEXT PRIMARY KEY, data JSONB NOT NULL)`);
@@ -80,11 +81,12 @@ async function loadList(table) {
 }
 
 async function loadAllState() {
-  const [users, sessions, quotes, productos, marcas, categorias, contacto, mant, auditoria, recup] = await Promise.all([
+  const [users, sessions, quotes, productos, servicios, marcas, categorias, contacto, mant, auditoria, recup] = await Promise.all([
     loadAll('kv_users'),
     loadSessions(),
     loadAll('kv_quotes'),
     loadAll('kv_productos'),
+    loadAll('kv_servicios'),
     loadAll('kv_marcas'),
     loadAll('kv_categorias'),
     loadList('kv_contacto'),
@@ -100,7 +102,7 @@ async function loadAllState() {
     if (r.rows[0]) lastHash = r.rows[0].value;
   } catch {}
   if (items.length) lastHash = items[items.length - 1].hash || lastHash;
-  return { users, sessions, quotes, productos: Object.values(productos || {}), marcas, categorias, contacto, mant, recup: recup || {}, audit: { items, lastHash } };
+  return { users, sessions, quotes, productos: Object.values(productos || {}), servicios: Object.values(servicios || {}), marcas, categorias, contacto, mant, recup: recup || {}, audit: { items, lastHash } };
 }
 
 // Escritura directa (write-through). Fire-and-forget desde server.js.
