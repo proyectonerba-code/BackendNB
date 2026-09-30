@@ -719,7 +719,12 @@ if (pathname === '/api/recuperar' && req.method === 'POST') {
     // el enlace se imprime para mandarlo por WhatsApp. Con RECOVERY_DEBUG=1 se
     // devuelve en la respuesta, solo para pruebas.
     if (RECOVERY_DEBUG) console.log('ENLACE ' + link);
-    logAudit(req, { modulo: 'accesos', evento: 'recuperar-error', detalle: email, usuario: u.email });
+      // El motivo va en la bitacora, no solo en los logs del servidor. Como la
+      // respuesta al cliente es siempre 200 (para no filtrar que correos
+      // existen), sin esto un fallo de SMTP o de Resend era invisible: el admin
+      // veia "recuperar-error" y no sabia si era clave, quota o remitente.
+      const motivo = String((e && e.message) || 'fallo desconocido').replace(/\s+/g, ' ').slice(0, 260);
+      logAudit(req, { modulo: 'accesos', evento: 'recuperar-error', detalle: email + ' | ' + motivo, usuario: u.email });
     // Se responde igual que en el caso exitoso a proposito. Si aqui se
     // devolviera 502, un atacante deduciria quais correos estan registrados:
     // los inexistentes darian 200 y los existentes 502.
@@ -737,7 +742,7 @@ if (pathname === '/api/restablecer/verificar' && req.method === 'POST') {
   const r = tokenGuardado(hashToken(body.token));
   if (!r) return sendJSON(res, 400, { error: 'El enlace vencio o ya se uso. Pide uno nuevo.' }, req);
   const u = users[r.email] || {};
-  return sendJSON(res, 200, { ok: true, email: r.email, nombre: u.nombre || '' }, req);
+    return sendJSON(res, 200, { ok: true, email: r.email, nombre: u.nombre || '', expira: r.expira, minutos: RESET_MINUTOS }, req);
 }
 
 if (pathname === '/api/restablecer' && req.method === 'POST') {
