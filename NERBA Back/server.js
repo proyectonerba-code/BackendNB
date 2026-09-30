@@ -17,6 +17,7 @@ const PORT = parseInt(process.env.PORT || process.argv[2] || '8080', 10);
 
 // Capa de datos: Postgres si hay DATABASE_URL, JSON local si no.
 const db = require('./db');
+const nerbot = require('./nerbot');
 let DB_MODE = false;
 // Mirrors en memoria cuando hay DB (lecturas sync, escritura write-through).
 let cProductos = null, cMarcas = null, cCategorias = null, cContacto = null, cMant = null, cAudit = null, cRecup = null;
@@ -124,7 +125,7 @@ function seedDemo() {
   };
   persistQuotes();
 }
-if (Object.keys(quotes).length === 0) seedDemo();
+if (SEED_DEMO && Object.keys(quotes).length === 0) seedDemo();
 
 // Cuentas de prueba para chequeos en local (solo se crean si no existen).
 // En producción define SEED_DEMO=0 para no crearlas.
@@ -599,6 +600,67 @@ const server = http.createServer(async (req, res) => {
   // ----- API -----
   if (pathname === '/api/health') return sendJSON(res, 200, { ok: true, service: 'grupo-nerba-hidalgo', port: PORT }, req);
   if (pathname === '/api/config') return sendJSON(res, 200, { googleClientId: GOOGLE_CLIENT_ID }, req);
+
+  // ----- NerBot: solo clientes autenticados (el staff puede con NERBOT_STAFF=1) -----
+  const nerbotNo = (u) => (!u || (u.rol !== 'CLIENTE' && !nerbot.staff));
+  if (pathname === '/api/chatbot/message' && req.method === 'POST') {
+    if (!rateLimit(req, 20, 60000)) return sendJSON(res, 429, { error: 'Demasiadas consultas seguidas. Espera un momento.' }, req);
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch (e) {
+      return sendJSON(res, 400, { error: 'Solicitud inválida' }, req);
+    }
+    const u = userByToken(getToken(req));
+    if (!u) return sendJSON(res, 401, { error: 'Inicia sesión para usar NerBot.' }, req);
+    if (nerbotNo(u)) return sendJSON(res, 403, { error: 'NerBot está disponible para cuentas CLIENTE.' }, req);
+    try {
+      const result = await nerbot.message({
+        sessionId: body.session_id || body.sessionId,
+        user: u,
+        question: body.message,
+        catalog: loadProductos(),
+      });
+      return sendJSON(res, 200, result, req);
+    } catch (e) {
+      const status = Number(e && e.status) || 500;
+      return sendJSON(res, status, { error: e.message || 'No se pudo procesar la consulta.' }, req);
+    }
+  }
+
+  if (pathname === '/api/chatbot/history' && req.method === 'GET') {
+    const u = userByToken(getToken(req));
+    if (!u) return sendJSON(res, 401, { error: 'Inicia sesión para consultar el historial.' }, req);
+    if (nerbotNo(u)) return sendJSON(res, 403, { error: 'NerBot está disponible para cuentas CLIENTE.' }, req);
+    try {
+      const items = await nerbot.history({ sessionId: url.searchParams.get('session_id') || '', user: u });
+      return sendJSON(res, 200, { items }, req);
+    } catch (e) {
+      const status = Number(e && e.status) || 500;
+      return sendJSON(res, status, { error: e.message || 'No se pudo cargar el historial.' }, req);
+    }
+  }
+
+  if (pathname === '/api/chatbot/feedback' && req.method === 'POST') {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch (e) {
+      return sendJSON(res, 400, { error: 'Solicitud inválida' }, req);
+    }
+    const u = userByToken(getToken(req));
+    if (!u) return sendJSON(res, 401, { error: 'Inicia sesión para enviar feedback.' }, req);
+    if (nerbotNo(u)) return sendJSON(res, 403, { error: 'NerBot está disponible para cuentas CLIENTE.' }, req);
+    try {
+      const result = await nerbot.feedback({
+        sessionId: body.session_id || body.sessionId,
+        user: u,
+        messageId: body.message_id || body.messageId,
+        rating: body.rating,
+        note: body.note,
+      });
+      return sendJSON(res, 200, result, req);
+    } catch (e) {
+      const status = Number(e && e.status) || 500;
+      return sendJSON(res, status, { error: e.message || 'No se pudo guardar el feedback.' }, req);
+    }
+  }
   if (pathname === '/api/catalogo') return sendJSON(res, 200, CATALOGO, req);
 
   if (pathname === '/api/register' && req.method === 'POST') {
@@ -1505,6 +1567,14 @@ async function start() {
       console.log('Aviso PG (' + e.message + '): sigo con JSON local.');
     }
   }
+  try {
+    await nerbot.init({ db, dbMode: DB_MODE });
+    console.log('NerBot: modelo ' + nerbot.model + ' | staff ' + (nerbot.staff ? 'si' : 'no') +
+      (nerbot.configured ? '' : ' | SIN GEMINI_API_KEY: respondera con el fallback'));
+  } catch (e) {
+    console.log('Aviso NerBot: ' + e.message + '. El chat usará fallback seguro.');
+  }
+
   server.listen(PORT, () => {
     console.log('== Grupo NERBA HIDALGO Backend (Node.js) ==');
     console.log('Frontend: ' + FRONT_DIR);
