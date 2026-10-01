@@ -677,10 +677,19 @@ function quoteScope(u, c) {
   if (!u || !c) return false;
   if (u.rol === 'SUPERADMIN') return true;
   var area = c.area || 'GENERAL';
-  if (u.rol === 'ADMIN') return area !== 'PROYECTOS_ESPECIALES';
-  if (u.rol === 'PROYECTOS_ESPECIALES') return area === 'PROYECTOS_ESPECIALES';
-  if (u.rol === 'PRODUCTOS_ELECTRONICOS') {
-    return area === 'PRODUCTOS_ELECTRONICOS' || c.tipoInmueble === 'Productos Electrónicos';
+  // Cada rol ve una sola zona. Antes ADMIN veia todo menos PROYECTOS_ESPECIALES,
+  // y eso le metia en la bandeja las cotizaciones de productos electronicos,
+  // que son del rol PRODUCTOS_ELECTRONICOS y no suyas.
+  var soloSuZona = {
+    ADMIN: ['GENERAL', 'MANTENIMIENTO'],
+    PRODUCTOS_ELECTRONICOS: ['PRODUCTOS_ELECTRONICOS'],
+    PROYECTOS_ESPECIALES: ['PROYECTOS_ESPECIALES'],
+  };
+  if (soloSuZona[u.rol]) {
+    // Si la zona del rol no cuadra con lo que dice el tipo de inmueble, se
+    // respeta el area: manda lo que guardo el servidor, no lo que mando el
+    // cliente en el formulario.
+    return soloSuZona[u.rol].indexOf(area) !== -1;
   }
   if (u.rol === 'CLIENTE') return c.demo !== true && !!(c.email && u.email && c.email.toLowerCase() === u.email.toLowerCase());
   return !!(c.email && u.email && c.email.toLowerCase() === u.email.toLowerCase());
@@ -1067,15 +1076,21 @@ if (pathname === '/api/login' && req.method === 'POST') {
     // El area se deriva en servidor (no se confia en el cliente): Proyecto Especial
     // va unicamente al rol de Proyectos Especiales; Productos Electrónicos,
     // unicamente al rol de Productos Electrónicos; el resto es GENERAL.
-    const area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
-      : (tipoInmueble === 'Productos Electrónicos' ? 'PRODUCTOS_ELECTRONICOS' : 'GENERAL');
-    const espTipoInfraestructura = String(body.espTipoInfraestructura || '');
-    if (area === 'PROYECTOS_ESPECIALES' && !espTipoInfraestructura) {
-      return sendJSON(res, 400, { error: 'Selecciona el alcance o tipo de infraestructura del proyecto especial' });
-    }
-    const year = new Date().getFullYear();
-    const serie = serieDeCotizacion(body, area);
-    const folio = folioSiguiente(serie, year);
+let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
+    : (tipoInmueble === 'Productos Electrónicos' ? 'PRODUCTOS_ELECTRONICOS' : 'GENERAL');
+  const espTipoInfraestructura = String(body.espTipoInfraestructura || '');
+  if (area === 'PROYECTOS_ESPECIALES' && !espTipoInfraestructura) {
+    return sendJSON(res, 400, { error: 'Selecciona el alcance o tipo de infraestructura del proyecto especial' });
+  }
+  const year = new Date().getFullYear();
+  const serie = serieDeCotizacion(body, area);
+  // El area se hacia solo mirando el tipo de inmueble. Cuando la peticion viene
+  // de la pagina de productos electronicos, esa casilla no viaja y el area
+  // quedaba en GENERAL: el folio salia de electronica (COT-ELC) pero la
+  // cotizacion se colaba en la bandeja de ADMIN. Ahora el area sale de la misma
+  // serie que decide el folio, para que las dos cosas no se contradigan.
+  if (area === 'GENERAL' && serie !== 'GENERAL') area = serie;
+  const folio = folioSiguiente(serie, year);
     const c = {
       folio,
       fecha: new Date().toISOString().slice(0, 10),
