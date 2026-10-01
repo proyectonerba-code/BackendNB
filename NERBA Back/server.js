@@ -339,6 +339,13 @@ function correoRecuperacion(destino, nombre, link) {
   // En Railway los puertos SMTP (465/587/25) estan bloqueados: Gmail siempre
   // da timeout. Por eso los proveedores HTTP (Brevo, Resend) van PRIMERO y el
   // SMTP queda como respaldo para despliegues con salida SMTP (VPS, Hostinger).
+  return enviarCorreo({ destino, nombre, asunto, html, texto });
+}
+
+// Un solo punto de envio para todo el sistema (recuperacion, confirmaciones).
+// Orden: Brevo -> Resend -> SMTP. Los errores se acumulan para saber CUAL fallo.
+function enviarCorreo(o) {
+  const destino = o.destino, nombre = o.nombre || '', asunto = o.asunto, html = o.html, texto = o.texto;
   const intentos = [];
   if (BREVO_API_KEY) intentos.push(['brevo', enviaBrevo]);
   if (RESEND_API_KEY) intentos.push(['resend', enviaResend]);
@@ -414,6 +421,41 @@ function correoRecuperacion(destino, nombre, link) {
     });
     return tx.sendMail({ from: SMTP_FROM, to: destino, subject: asunto, html, text: texto });
   }
+}
+
+// Confirmacion al crear cualquier cotizacion (cotizador general o pedido de
+// refacciones/electronica). Se manda sin bloquear la respuesta: si el correo
+// falla, la cotizacion ya quedo guardada y solo se registra en el log.
+function correoConfirmacionCotizacion(destino, nombre, c) {
+  const folio = String((c && c.folio) || '');
+  const esElec = String((c && c.area) || '') === 'PRODUCTOS_ELECTRONICOS' ||
+    String((c && c.tipoInmueble) || '') === 'Productos Electrónicos';
+  const asunto = 'Recibimos tu solicitud ' + folio + ' - Grupo NERBA HIDALGO';
+  const items = Array.isArray(c && c.items) ? c.items : [];
+  const listaItems = items.slice(0, 20).map(function (it) {
+    return ' - ' + String((it && it.title) || 'Componente') + ' x' + (parseInt(it && it.qty, 10) || 1);
+  }).join('\n');
+  const detalle = listaItems || String((c && c.descripcion) || 'Solicitud registrada.');
+  const html =
+    '<div style="font-family:Segoe UI,Arial,sans-serif;max-width:520px;margin:0 auto">' +
+    '<h2 style="color:#b0000b;margin:0 0 16px">Grupo NERBA HIDALGO</h2>' +
+    '<p>Hola ' + escapeHTML(nombre || '') + ',</p>' +
+    '<p>Recibimos tu solicitud <strong>' + escapeHTML(folio) + '</strong>' +
+    (esElec ? ' de electrónica y refacciones.' : ' de cotización.') + '</p>' +
+    '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;font-size:13px;white-space:pre-line">' +
+    escapeHTML(detalle) + '</div>' +
+    '<p>Estado: <strong>' + escapeHTML(String((c && c.estado) || 'PENDIENTE')) + '</strong>' +
+    (c && c.validez ? ' · Válida hasta ' + escapeHTML(String(c.validez)) : '') + '</p>' +
+    '<p>Te avisaremos por este medio cuando cambie su estado. Puedes verla en Mis Cotizaciones.</p>' +
+    '<hr style="border:none;border-top:1px solid #e5e5e5;margin:24px 0">' +
+    '<p style="font-size:12px;color:#888">Grupo Empresarial Nerba, S.A. de C.V. &middot; ' +
+    '775 130 0335 &middot; 771 219 8250 &middot; gruponerba@hotmail.com</p></div>';
+  const texto =
+    'Grupo NERBA HIDALGO - Solicitud ' + folio + ' recibida\n\n' +
+    'Hola ' + (nombre || '') + ',\n\n' + detalle +
+    '\n\nEstado: ' + String((c && c.estado) || 'PENDIENTE') + '.\n' +
+    'Te avisaremos por este medio cuando cambie su estado.\n';
+  return enviarCorreo({ destino, nombre, asunto, html, texto });
 }
 
 function logAudit(req, info) {
@@ -1071,7 +1113,52 @@ if (pathname === '/api/login' && req.method === 'POST') {
     quotes[folio] = c;
     persistQuotes();
     logAudit(req, { modulo: 'cotizaciones', evento: 'alta', detalle: (c.producto || '') + ' para ' + u.email, folio });
+    // Confirmacion por correo al cliente. No bloquea ni falla la respuesta:
+    // si no hay proveedor de correo o falla el envio, solo queda en el log.
+    try {
+      correoConfirmacionCotizacion(c.email, c.nombre, c).catch(function (e) {
+        console.log('Aviso correo confirmacion ' + folio + ': ' + e.message);
+      });
+    } catch (e) {
+      console.log('Aviso correo confirmacion ' + folio + ': ' + e.message);
+    }
     return sendJSON(res, 201, c);
+  }
+
+  // ----- PDF real de la cotizacion (archivo .pdf, no vista de impresion) -----
+  // Unifica el formato para todas las areas: la misma plantilla del servidor,
+  // con nombre de archivo = folio. La vista en pantalla (viewQuote) sigue
+  // existiendo; esto es para descargar el documento oficial.
+  const mPdf = /^\/api\/cotizaciones\/(.+)\/pdf$/.exec(pathname);
+  if (mPdf && req.method === 'GET') {
+    const u = userByToken(getToken(req));
+    if (!u) return sendJSON(res, 401, { error: 'Inicia sesion para descargar el documento' }, req);
+    const c = quotes[mPdf[1]];
+    if (!c) return sendJSON(res, 404, { error: 'No encontrada' }, req);
+    if (!quoteScope(u, c)) return sendJSON(res, 403, { error: 'No tienes permiso para descargar esta cotizacion' }, req);
+    let pdf;
+    try {
+      pdf = require('./pdf');
+    } catch (e) {
+      return sendJSON(res, 501, { error: 'Generador PDF no disponible en este despliegue.' }, req);
+    }
+    let buf;
+    try {
+      buf = await pdf.generar(c);
+    } catch (e) {
+      console.log('Aviso PDF ' + c.folio + ': ' + e.message);
+      return sendJSON(res, 500, { error: 'No se pudo generar el documento.' }, req);
+    }
+    logAudit(req, { modulo: 'cotizaciones', evento: 'descarga-pdf', detalle: c.folio, folio: c.folio });
+    res.writeHead(200, {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': 'attachment; filename="' + String(c.folio).replace(/[^A-Za-z0-9._-]+/g, '_') + '.pdf"',
+      'Content-Length': buf.length,
+      'Cache-Control': 'no-store',
+      'Access-Control-Allow-Origin': corsOrigin(req),
+      'Vary': 'Origin',
+    });
+    return res.end(buf);
   }
 
   const mFolio = /^\/api\/cotizaciones\/(.+)$/.exec(pathname);
