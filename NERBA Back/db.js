@@ -38,23 +38,53 @@ async function init() {
   await p.query(`CREATE TABLE IF NOT EXISTS kv_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`);
 }
 
+// Un solo reemplazo por tabla a la vez. Sin esto, dos escrituras simultaneas
+// (p.ej. dos clientes que se registran al tiempo) se intercalaban en el pool:
+// una hacia DELETE, la otra tambien, y luego ambas INSERTaban la misma clave
+// ("duplicate key value violates unique constraint").
+const COLAS = {};
+
 async function replaceAll(table, obj) {
+  const previo = COLAS[table] || Promise.resolve();
+  COLAS[table] = previo.catch(() => {}).then(() => ejecutarReplace(table, obj));
+  return COLAS[table];
+}
+
+async function ejecutarReplace(table, obj) {
   const p = getPool();
+  const client = await p.connect();
   const entries = Object.entries(obj || {});
-  await p.query('BEGIN');
   try {
-    await p.query(`DELETE FROM ${table}`);
+    await client.query('BEGIN');
+    // Upsert en vez de DELETE+INSERT: si la fila ya existe se actualiza, asi
+    // que un conflicto de clave deja de ser un error.
     for (const [k, v] of entries) {
       if (table === 'kv_sessions') {
-        await p.query(`INSERT INTO ${table} (key, email, expires_at, data) VALUES ($1,$2,$3,$4)`, [k, String((v && v.email) || ''), Number((v && v.expiresAt) || 0), v || {}]);
+        await client.query(
+          `INSERT INTO ${table} (key, email, expires_at, data) VALUES ($1,$2,$3,$4)
+           ON CONFLICT (key) DO UPDATE SET email=EXCLUDED.email, expires_at=EXCLUDED.expires_at, data=EXCLUDED.data`,
+          [k, String((v && v.email) || ''), Number((v && v.expiresAt) || 0), v || {}]
+        );
       } else {
-        await p.query(`INSERT INTO ${table} (key, data) VALUES ($1,$2)`, [k, v === undefined ? null : v]);
+        await client.query(
+          `INSERT INTO ${table} (key, data) VALUES ($1,$2)
+           ON CONFLICT (key) DO UPDATE SET data=EXCLUDED.data`,
+          [k, v === undefined ? null : v]
+        );
       }
     }
-    await p.query('COMMIT');
+    // Solo se borra lo que ya no existe en memoria. Se hace al final para que
+    // las escrituras que llegan durante el bucle no se pierdan.
+    const claves = entries.map(([k]) => k);
+    if (claves.length) {
+      await client.query(`DELETE FROM ${table} WHERE NOT (key = ANY($1::text[]))`, [claves]);
+    }
+    await client.query('COMMIT');
   } catch (e) {
-    await p.query('ROLLBACK');
+    try { await client.query('ROLLBACK'); } catch (_) {}
     throw e;
+  } finally {
+    client.release();
   }
 }
 
