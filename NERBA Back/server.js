@@ -39,7 +39,11 @@ const ORIGENES_PERMITIDOS = FRONTEND_ORIGINS.concat([
   'http://localhost:8080',
   'https://nerbaproyecto.pages.dev',
 ]);
-const SEED_DEMO = process.env.SEED_DEMO !== '0';
+// Falla seguro. Antes era !== '0', o sea que si la variable NO existia el
+// seed se activaba solo: con el repo publico, cualquiera con acceso de lectura
+// podia entrar a produccion como SUPERADMIN con la contrasena del seed.
+// Ahora solo se siembran si se pide de forma explicita con SEED_DEMO=1.
+const SEED_DEMO = process.env.SEED_DEMO === '1';
 // SERVE_STATIC=0: solo API (deploy separado: frontend en Netlify). Local: 1.
 const SERVE_STATIC = process.env.SERVE_STATIC !== '0';
 // Recuperacion de contrasena por correo: Resend (HTTPS) primero porque Railway
@@ -755,11 +759,7 @@ if (pathname === '/api/recuperar' && req.method === 'POST') {
     // el enlace se imprime para mandarlo por WhatsApp. Con RECOVERY_DEBUG=1 se
     // devuelve en la respuesta, solo para pruebas.
     if (RECOVERY_DEBUG) console.log('ENLACE ' + link);
-      // El motivo va en la bitacora, no solo en los logs del servidor. Como la
-      // respuesta al cliente es siempre 200 (para no filtrar que correos
-      // existen), sin esto un fallo de SMTP o de Resend era invisible: el admin
-      // veia "recuperar-error" y no sabia si era clave, quota o remitente.
-      const motivo = String((e && e.message) || 'fallo desconocido').replace(/\s+/g, ' ').slice(0, 260);
+      const motivo = String((e && e.message) || 'fallo desconocido').replace(/\s+/g, ' ').slice(0, 300);
       logAudit(req, { modulo: 'accesos', evento: 'recuperar-error', detalle: email + ' | ' + motivo, usuario: u.email });
     // Se responde igual que en el caso exitoso a proposito. Si aqui se
     // devolviera 502, un atacante deduciria quais correos estan registrados:
@@ -800,6 +800,44 @@ if (pathname === '/api/restablecer' && req.method === 'POST') {
   persistUsers();
   logAudit(req, { modulo: 'accesos', evento: 'contrasena-restablecida', detalle: r.email, usuario: r.email });
   return sendJSON(res, 200, { ok: true }, req);
+}
+
+/* Diagnostico del correo (solo ADMIN/SUPERADMIN). /api/recuperar siempre
+   responde 200 para no revelar que correos existen, asi que un fallo de SMTP o
+   de Resend no se ve desde el sitio. Este endpoint manda un correo de prueba a
+   la direccion que se le pida y devuelve el error real del proveedor, o por que
+   no se intento ninguno. */
+if (pathname === '/api/admin/probar-correo' && req.method === 'POST') {
+  let body = {};
+  try { body = JSON.parse(await readBody(req)); } catch (e) { body = {}; }
+  const u = userByToken(getToken(req));
+  if (!u || !isStaff(u)) return sendJSON(res, 403, { error: 'Solo administracion' }, req);
+  const destino = String(body.email || '').trim().toLowerCase();
+  if (!destino.includes('@')) return sendJSON(res, 400, { error: 'Escribe un correo valido' }, req);
+  const configCorreo = {
+    resend: !!RESEND_API_KEY,
+    smtp: !!(SMTP_USER && SMTP_PASS),
+    smtpDesde: SMTP_FROM || SMTP_USER || '(sin definir)',
+    resendDesde: RESEND_FROM,
+  };
+  if (!configCorreo.resend && !configCorreo.smtp) {
+    logAudit(req, { modulo: 'accesos', evento: 'correo-prueba-sin-proveedor', detalle: destino + ' | falta RESEND_API_KEY o SMTP_USER/SMTP_PASS', usuario: u.email });
+    return sendJSON(res, 503, {
+      error: 'No hay ningun proveedor de correo configurado en el servidor.',
+      como: 'Define RESEND_API_KEY, o SMTP_USER y SMTP_PASS, en las variables de entorno.',
+      config: configCorreo,
+    }, req);
+  }
+  const enlace = (FRONTEND_URL || '') + '/restablecer.html?token=prueba';
+  try {
+    await correoRecuperacion(destino, u.nombre, enlace);
+    logAudit(req, { modulo: 'accesos', evento: 'correo-prueba-ok', detalle: destino, usuario: u.email });
+    return sendJSON(res, 200, { ok: true, enviado: true, destino: destino, config: configCorreo }, req);
+  } catch (e) {
+    const motivo = String((e && e.message) || 'fallo desconocido').replace(/\s+/g, ' ').slice(0, 300);
+    logAudit(req, { modulo: 'accesos', evento: 'correo-prueba-error', detalle: destino + ' | ' + motivo, usuario: u.email });
+    return sendJSON(res, 502, { error: 'El correo NO se pudo enviar.', motivo: motivo, destino: destino, config: configCorreo }, req);
+  }
 }
 
 if (pathname === '/api/login' && req.method === 'POST') {

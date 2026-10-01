@@ -9,9 +9,11 @@
   },
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js 8080"
+    "dev": "node --env-file-if-exists=.env server.js 8080",
+    "dev:cualquierpuerto": "node --env-file-if-exists=.env server.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=18",
+    "nota": "npm run dev usa --env-file-if-exists y necesita Node 22.9 o mayor. npm start funciona en 18."
   }
 }
