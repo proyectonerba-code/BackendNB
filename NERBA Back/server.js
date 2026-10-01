@@ -75,6 +75,66 @@ let users = {};      // email -> { nombre, email, telefono, passHash, direccion,
 let sessions = {};   // token -> { email, expiresAt }
 let quotes = {};     // folio -> cotizacion
 let folioSeq = 8850;
+// --- Folios: una serie por tipo de trabajo ---------------------------------
+// Antes todas las cotizaciones compartian un solo contador (COT-8850-2026),
+// asi que una venta de equipo y una instalacion quedaban con numeros mezclados.
+// Ahora cada tipo lleva su serie:
+//   INS  instalacion / cerco / videovigilancia
+//   ELC  productos electronicos
+//   MAT  mantenimiento y polizas
+//   ESP  proyectos especiales
+function sinAcentos(s) {
+  // Se quita todo lo que no sean letras, no solo las tildes. Si un texto llega
+  // con un byte roto (por ejemplo "Electr?nicos" desde un cliente o un proxy),
+  // comparar palabra por palabra fallaba en silencio y la cotizacion se iba a
+  // la serie equivocada. Asi se comparan letras limpias.
+  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z]/g, '');
+}
+const SERIES_FOLIO = {
+  GENERAL: 'INS',
+  PRODUCTOS_ELECTRONICOS: 'ELC',
+  MANTENIMIENTO: 'MAT',
+  PROYECTOS_ESPECIALES: 'ESP',
+};
+// Los contadores se deducen de los folios que ya hay en cada arranque, en vez
+// de guardarse aparte. Asi, aunque el servidor se reinicie o se redeploye, el
+// numero sigue subiendo y nunca se repite uno.
+const folioSeqs = { GENERAL: 0, PRODUCTOS_ELECTRONICOS: 0, MANTENIMIENTO: 0, PROYECTOS_ESPECIALES: 0 };
+function tomaFolioExistente(folio) {
+  const m = /^COT-([A-Z]{3})-(\d{4})-\d{4}$/.exec(String(folio || ''));
+  if (!m) return;
+  const serie = Object.keys(SERIES_FOLIO).find((k) => SERIES_FOLIO[k] === m[1]);
+  if (!serie) return;
+  const n = parseInt(m[2], 10) || 0;
+  if (n > (folioSeqs[serie] || 0)) folioSeqs[serie] = n;
+}
+function folioSiguiente(serie, year) {
+  folioSeqs[serie] = (folioSeqs[serie] || 0) + 1;
+  return `COT-${SERIES_FOLIO[serie]}-${String(folioSeqs[serie]).padStart(4, '0')}-${year}`;
+}
+// Decide la serie. Primero hace caso de lo que pidio el cliente; si no, se
+// deduce del area y, en ultimo caso, de si la cotizacion habla de
+// mantenimiento o poliza.
+function serieDeCotizacion(body, area) {
+  const pedido = String(body.tipoCotizacion || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+  if (pedido === 'MANTENIMIENTO') return 'MANTENIMIENTO';
+  if (pedido === 'PRODUCTOS_ELECTRONICOS' || pedido === 'ELECTRONICOS') return 'PRODUCTOS_ELECTRONICOS';
+  if (pedido === 'PROYECTOS_ESPECIALES' || pedido === 'ESPECIALES') return 'PROYECTOS_ESPECIALES';
+  if (pedido === 'GENERAL' || pedido === 'INSTALACION') return 'GENERAL';
+  if (area === 'PROYECTOS_ESPECIALES') return 'PROYECTOS_ESPECIALES';
+  if (area === 'PRODUCTOS_ELECTRONICOS') return 'PRODUCTOS_ELECTRONICOS';
+  // Se compara sin tildes: "Productos Electronicos" escrito de otra forma
+  // tiene que caer en la misma serie, si no se va a instalacion sin avisar.
+  const tipo = sinAcentos(String(body.tipoInmueble || ''));
+  if (tipo.indexOf('productoselectronicos') >= 0) return 'PRODUCTOS_ELECTRONICOS';
+  if (tipo.indexOf('proyectoespecial') >= 0) return 'PROYECTOS_ESPECIALES';
+  const textos = [String(body.producto || ''), String(body.descripcion || '')]
+    .concat(Array.isArray(body.items) ? body.items.map((i) => String((i && i.title) || '')) : []);
+  if (/mantenimiento|poliza/.test(sinAcentos(textos.join(' ')))) return 'MANTENIMIENTO';
+  return 'GENERAL';
+}
+
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || '').trim();
 const GOOGLE_ALLOWED_DOMAIN = String(process.env.GOOGLE_ALLOWED_DOMAIN || '').trim().toLowerCase().replace(/^@/, '');
@@ -107,6 +167,9 @@ let migDemo = false;
 for (const q of quotesArr) {
   if (String(q.email || '').toLowerCase() === 'demo@nerba.mx' && q.demo !== true) { q.demo = true; migDemo = true; }
   quotes[q.folio] = q;
+  // Las series nuevas (COT-INS-0001-2026) llevan su propia cuenta: se recorren
+  // los folios guardados para no repetir numero cuando el servidor arranca.
+  tomaFolioExistente(q.folio);
   const m = /^COT-(\d+)-/.exec(q.folio || '');
   if (m && parseInt(m[1], 10) >= folioSeq) folioSeq = parseInt(m[1], 10) + 1;
 }
@@ -969,7 +1032,8 @@ if (pathname === '/api/login' && req.method === 'POST') {
       return sendJSON(res, 400, { error: 'Selecciona el alcance o tipo de infraestructura del proyecto especial' });
     }
     const year = new Date().getFullYear();
-    const folio = `COT-${folioSeq++}-${year}`;
+    const serie = serieDeCotizacion(body, area);
+    const folio = folioSiguiente(serie, year);
     const c = {
       folio,
       fecha: new Date().toISOString().slice(0, 10),
@@ -982,6 +1046,10 @@ if (pathname === '/api/login' && req.method === 'POST') {
       espTipoInfraestructura,
       medidasDescriptivas: String(body.medidasDescriptivas || ''),
       area,
+      // Con que serie quedo: el panel usa esto para agrupar y para poner la
+      // etiqueta correcta en el documento.
+      serie,
+      tipoCotizacion: serie,
       direccion: String(body.direccion || ''),
       producto: String(body.producto || 'Sistema de seguridad integral'),
       descripcion: String(body.descripcion || ''),
