@@ -28,7 +28,17 @@ const CANDIDATES = [
   path.resolve(__dirname, '../NERBA Front'),
 ].filter(Boolean);
 const FRONT_DIR = CANDIDATES.find((p) => { try { return fs.existsSync(p); } catch { return false; } }) || path.resolve(__dirname, '../NERBA Front');
+// FRONTEND_URL es el origen principal, pero se aceptan varios (por ejemplo
+// mientras el sitio migra de Netlify a Cloudflare). Separados por coma.
+// Vacio = '*' (solo para desarrollo; en produccion define la lista).
 const FRONTEND_URL = String(process.env.FRONTEND_URL || '').trim().replace(/\/$/, '');
+const FRONTEND_ORIGINS = FRONTEND_URL
+  ? FRONTEND_URL.split(',').map((x) => x.trim().replace(/\/$/, '')).filter(Boolean)
+  : [];
+const ORIGENES_PERMITIDOS = FRONTEND_ORIGINS.concat([
+  'http://localhost:8080',
+  'https://nerbaproyecto.pages.dev',
+]);
 const SEED_DEMO = process.env.SEED_DEMO !== '0';
 // SERVE_STATIC=0: solo API (deploy separado: frontend en Netlify). Local: 1.
 const SERVE_STATIC = process.env.SERVE_STATIC !== '0';
@@ -444,18 +454,31 @@ function publicAudit(e) {
     detalle: e.detalle || '', folio: e.folio || '', usuario: e.usuario || '', nombre: e.nombre || '', rol: e.rol || '',
   };
 }
+// El origen se resuelve con el req del contexto, no con el parametro de
+// sendJSON: hay mas de cien llamadas que no lo pasan, y con allowlist eso
+// hacia que todas respondieran con el origen principal y el navegador
+// bloqueara el fetch desde otro dominio (Cloudflare, por ejemplo).
+// AsyncLocalStorage mantiene el req correcto aunque haya varias peticiones
+// simultaneas, cosa que una variable global no garantiza.
+const { AsyncLocalStorage } = require('async_hooks');
+const ALCANCE = new AsyncLocalStorage();
+
 function corsOrigin(req) {
-  if (!FRONTEND_URL) return '*';
-  const o = String(req.headers.origin || '');
-  // Allowlist simple: solo el FRONTEND_URL configurado; sin Origin (curl/same-origin) se permite.
-  if (!o) return FRONTEND_URL;
-  return o === FRONTEND_URL ? o : FRONTEND_URL;
+  const actual = req || (ALCANCE.getStore() && ALCANCE.getStore().req) || null;
+  // Sin lista configurada se deja abierto (solo util en desarrollo).
+  if (!ORIGENES_PERMITIDOS.length) return '*';
+  const o = String((actual && actual.headers && actual.headers.origin) || '').trim();
+  // Sin Origin (curl, healthcheck, same-origin) se responde con el principal.
+  if (!o) return ORIGENES_PERMITIDOS[0];
+  // Allowlist: si el origen no esta en la lista, NO se refleja. Se responde con
+  // el principal para que el navegador lo rechace, en vez de dejarlo pasar.
+  return ORIGENES_PERMITIDOS.indexOf(o.replace(/\/$/, '')) > -1 ? o : ORIGENES_PERMITIDOS[0];
 }
 function sendJSON(res, status, obj, req) {
   const body = JSON.stringify(obj);
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
-    'Access-Control-Allow-Origin': req ? corsOrigin(req) : (FRONTEND_URL || '*'),
+    'Access-Control-Allow-Origin': corsOrigin(req),
     'Vary': 'Origin',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
@@ -590,7 +613,13 @@ const MIME = {
 };
 
 // ---------- servidor ----------
-const server = http.createServer(async (req, res) => {
+// ALCANCE.run() envuelve cada peticion para que corsOrigin sepa de quien es
+// la respuesta, sin tener que pasar req a las mas de cien llamadas a sendJSON.
+const server = http.createServer((req, res) => {
+  ALCANCE.run({ req }, () => manejar(req, res));
+});
+
+async function manejar(req, res) {
   const url = new URL(req.url, 'http://localhost');
   const pathname = url.pathname;
 
@@ -1716,7 +1745,7 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
   }
   res.writeHead(200, headers);
   fs.createReadStream(target).pipe(res);
-});
+}
 
 async function start() {
   if (db.isEnabled()) {

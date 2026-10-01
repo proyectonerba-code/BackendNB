@@ -8,21 +8,22 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-  // Modelos de Gemini, del mas estable al mas potente. El 503 "high demand"
-  // viene del modelo 3.8-flash: si se repite, cambia GEMINI_MODEL a uno de
-  // estos dos y la respuesta vuelve a ser de verdad (no el fallback).
-  const MODEL = String(process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim();
-// "off" = no mandar thinkingConfig (default, compatible con cualquier modelo).
+// Modelo configurado. Los de reserva se prueban solos en orden si este da 404
+// (Google los retira por llave/region y el chat se quedaria sin IA).
+const MODEL = String(process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim();
+// "off" = no mandar thinkingConfig (compatible con cualquier modelo).
 // "budget" = thinkingBudget (modelos 2.5). "low|medium|high" = thinkingLevel
-// (familia 3.x). Si el modelo rechaza el parametro, la llamada falla y el
-// chat cae al fallback: en ese caso pon GEMINI_THINKING_LEVEL=off.
-const THINKING_LEVEL = ['off', 'budget', 'low', 'medium', 'high'].includes(String(process.env.GEMINI_THINKING_LEVEL || 'low').toLowerCase())
-  ? String(process.env.GEMINI_THINKING_LEVEL || 'low').toLowerCase()
-  : 'low';
+// (familia 3.x). Si el modelo rechaza el parametro la llamada falla y el chat
+// cae al fallback: en ese caso pon GEMINI_THINKING_LEVEL=off.
+const THINKING_LEVEL = ['off', 'budget', 'low', 'medium', 'high'].includes(String(process.env.GEMINI_THINKING_LEVEL || 'budget').toLowerCase())
+  ? String(process.env.GEMINI_THINKING_LEVEL || 'budget').toLowerCase()
+  : 'budget';
 const API_KEY = String(process.env.GEMINI_API_KEY || '').trim();
-// Si el modelo configurado responde 404 (retirado o no habilitado), se prueban
-// estos en orden antes de rendirse con el fallback.
-const MODELOS_ALT = ['gemini-2.0-flash', 'gemini-flash-latest'];
+const MODELOS_ALT = ['gemini-2.0-flash', 'gemini-flash-latest', 'gemini-1.5-flash'];
+// Google retira modelos por llave/region con el tiempo (2.5-flash y 2.0-flash
+// ya no existen para esta llave). Averiguarlo cuesta una llamada fallida cada
+// vez, asi que se recuerda cual SI funciono y se empieza por ahi.
+let MODELO_ACTUAL = MODEL;
 const NERBOT_STAFF = process.env.NERBOT_STAFF === '1';
 const MAX_HISTORY = 24;
 const MAX_MESSAGE = 1200;
@@ -321,6 +322,11 @@ const CACHE = new Map();      // clave -> { out, expira }
 const EN_VUELO = new Map();   // clave -> Promise (una sola llamada por clave)
 const CACHE_TTL_MS = parseInt(process.env.NERBOT_CACHE_MIN || '180', 10) * 60000;
 const CACHE_MAX = parseInt(process.env.NERBOT_CACHE_MAX || '500', 10);
+// Cuando la cuota de Gemini se agota, se deja de llamar un rato en vez de
+// reintentar y empeorar el problema. El chat sigue vivo con cache/fallback.
+let pausaPorCuota = 0;
+let pausaCuotaSeg = 0;
+function enPausa() { return Date.now() < pausaPorCuota; }
 
 function cacheKey(question, area, picks) {
   const q = normalize(question).replace(/[^a-z0-9 ]+/g, '').replace(/\s+/g, ' ').trim();
@@ -454,9 +460,15 @@ async function callGemini({question, history, catalog, area, picks, user}) {
   if (ultimo && ultimo.role === 'user') ultimo.parts[0].text += '\n\n' + actual.parts[0].text;
   else contents.push(actual);
 
-  async function llamaGemini(reintento) {
+  // Candidatos en orden: el configurado y despues los de reserva. indice
+  // avanza solo cuando un modelo da 404 (retirado para esta llave); los
+  // reintentos por 503 se hacen sobre el MISMO modelo.
+  const candidatos = [MODELO_ACTUAL].concat(MODELOS_ALT.filter((m) => m !== MODELO_ACTUAL));
+
+  async function llamaGemini(indice, intento) {
+    const modelo = candidatos[indice];
     const response = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(MODEL) + ':generateContent',
+      'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(modelo) + ':generateContent',
       {
         method: 'POST',
         headers: {
@@ -487,32 +499,38 @@ async function callGemini({question, history, catalog, area, picks, user}) {
     );
 
     const raw = await response.text();
-    // 503/529 = saturacion temporal de Gemini. Antes un solo reintento, que en
-    // los picos de demanda no alcanzaba y caia al fallback (respuesta tonta).
-    // Ahora se reintenta varias veces con espera creciente.
-    if ((response.status === 503 || response.status === 429 || response.status === 529) && reintento < 3) {
-      await new Promise(function (r) { setTimeout(r, 1500 * (reintento + 1)); });
-      return llamaGemini(reintento + 1);
+
+    // 404 = ese modelo no existe o ya no esta disponible para esta llave.
+    // Se avanza al siguiente candidato y se RECUERDA el que sirva, para no
+    // repetir la busqueda en cada mensaje.
+    if (response.status === 404 && indice + 1 < candidatos.length) {
+      console.log('NerBot: ' + modelo + ' no disponible para esta llave, pruebo ' + candidatos[indice + 1]);
+      return llamaGemini(indice + 1, 0);
     }
-    // 404 = ese modelo no existe o ya no esta disponible para esta llave. Se
-    // prueban los de reserva para no quedarse sin IA por una variable mal puesta.
-    if (response.status === 404 && reintento < MODELOS_ALT.length) {
-      const siguiente = MODELOS_ALT[reintento];
-      console.log('NerBot: ' + MODEL + ' no disponible, pruebo ' + siguiente);
-      const antes = MODEL;
-      MODEL = siguiente;
-      try {
-        return await llamaGemini(reintento + 1);
-      } finally {
-        MODEL = antes;
-      }
+
+    // 429 = cuota de la capa gratuita agotada (limite por minuto). NO se
+    // reintenta: cada intento gasta mas cuota y la prolonga. Se marca una
+    // pausa para que el siguiente mensaje use la cache en vez de fallar.
+    if (response.status === 429) {
+      const espera = pausaCuotaSeg || 30;
+      pausaCuotaSeg = Math.min(300, Math.round(espera * 1.5));
+      pausaPorCuota = Date.now() + espera * 1000;
+      console.log('NerBot: cuota de Gemini agotada. Pausa ' + Math.round((pausaPorCuota - Date.now()) / 1000) + 's; se sirve cache/fallback.');
+      throw new Error('Gemini 429: cuota agotada');
     }
-    return rawResponse(raw, response);
+
+    // 503/529 = saturacion temporal: un reintento con espera y ya.
+    if ((response.status === 503 || response.status === 529) && intento < 1) {
+      await new Promise(function (r) { setTimeout(r, 2000); });
+      return llamaGemini(indice, intento + 1);
+    }
+
+    return rawResponse(raw, response, modelo);
   }
 
-  return llamaGemini(false);
+  return llamaGemini(0, 0);
 
-  function rawResponse(raw, response) {
+  function rawResponse(raw, response, modelo) {
     if (!response.ok) {
       let detail = '';
       try {
@@ -530,6 +548,12 @@ async function callGemini({question, history, catalog, area, picks, user}) {
     if (!text) throw new Error('Gemini no devolvió contenido');
     let out;
     try { out = JSON.parse(text); } catch { throw new Error('Gemini devolvió JSON inválido'); }
+    // Se recuerda el modelo que respondio bien: la siguiente llamada empieza
+    // por ahi y no gasta llamadas averiguando cual sigue vivo.
+    if (modelo && modelo !== MODELO_ACTUAL) {
+      MODELO_ACTUAL = modelo;
+      console.log('NerBot: modelo operativo ' + MODELO_ACTUAL);
+    }
     return out;
   }
 }
@@ -610,6 +634,13 @@ async function message({sessionId, user, question, catalog}) {
     }
   }
 
+  if (!answer && enPausa()) {
+    // Cuota de Gemini agotada: no se llama. Se responde con el texto de
+    // emergencia para que el cliente no espere, y no se gasta nada.
+    answer = normalizeAnswer({ reply: fallbackReply(cleanQuestion, serverArea, picks, history), area: serverArea, intent: 'cuota', confidence: 0.2, needs_human: true, suggestions: [], product_ids: picks.map((p) => p.id).slice(0, 6) }, serverArea, picks);
+    source = 'pausa';
+  }
+
   if (!answer) {
     // Una sola llamada por clave: si tres personas preguntan lo mismo al mismo
     // tiempo, esperan la misma promesa en vez de disparar tres requests.
@@ -635,7 +666,7 @@ async function message({sessionId, user, question, catalog}) {
         EN_VUELO.set(clave, tarea().then((r) => {
           // No se cachean las respuestas de emergencia: si Gemini se recupera,
           // la siguiente pregunta debe recibir la respuesta real.
-          if (r.intent !== 'fallback') cacheSet(clave, r);
+          if (r.intent !== 'fallback' && r.intent !== 'cuota') cacheSet(clave, r);
           EN_VUELO.delete(clave);
           return r;
         }).catch((e) => { EN_VUELO.delete(clave); throw e; }));
