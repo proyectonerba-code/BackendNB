@@ -580,9 +580,9 @@ const MAX_BODY_BYTES = 3 * 1024 * 1024; // 3MB: suficiente para fotos comprimida
 // Tres fotos es lo acordado. El límite de 650 KB por foto y 2 MB en total deja
 // holgura dentro del límite de 3 MB del request, para que la solicitud no se
 // rechace a medio enviar por fotos de celular sin comprimir.
-const MAX_FOTOS_COTIZACION = 3;
-const MAX_BYTES_FOTO_COTIZACION = 650 * 1024;
-const MAX_BYTES_TOTAL_FOTOS = 2 * 1024 * 1024;
+const MAX_FOTOS_COTIZACION = 5;
+const MAX_BYTES_FOTO_COTIZACION = 900 * 1024;
+const MAX_BYTES_TOTAL_FOTOS = 2600 * 1024;
 function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
