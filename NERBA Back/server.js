@@ -486,6 +486,13 @@ function matchesSearch(value, query) {
   return needle.split(/\s+/).filter(Boolean).every((token) => hay.includes(token) || compactHay.includes(compactSearch(token)));
 }
 const MAX_BODY_BYTES = 3 * 1024 * 1024; // 3MB: suficiente para fotos comprimidas, frena DoS
+// Topes de las fotos que adjunta el cliente a una solicitud de cotización.
+// Tres fotos es lo acordado. El límite de 650 KB por foto y 2 MB en total deja
+// holgura dentro del límite de 3 MB del request, para que la solicitud no se
+// rechace a medio enviar por fotos de celular sin comprimir.
+const MAX_FOTOS_COTIZACION = 3;
+const MAX_BYTES_FOTO_COTIZACION = 650 * 1024;
+const MAX_BYTES_TOTAL_FOTOS = 2 * 1024 * 1024;
 function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -912,6 +919,10 @@ if (pathname === '/api/login' && req.method === 'POST') {
       producto: String(body.producto || 'Sistema de seguridad integral'),
       descripcion: String(body.descripcion || ''),
       notas: String(body.notas || '').slice(0, 2000),
+      // Fotos que el cliente adjuntó a la solicitud. El navegador ya las achica
+      // antes de mandarlas (1200 px, JPEG 0.75), así que acá solo se valida que
+      // sean imágenes de verdad y que no vengan más de las permitidas.
+      fotos: sanitizaFotos(body.fotos),
       // Artículos sueltos de la cotización: permiten imprimirlos en tabla.
       items: (Array.isArray(body.items) ? body.items : []).slice(0, 80).map((it) => ({
         title: String((it && it.title) || '').trim().slice(0, 200),
@@ -1374,6 +1385,28 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
   }
   function imagenPesada(b) {
     return Array.isArray(b.images) && b.images.some((x) => String(x).length > 2000000);
+  }
+  // Fotos de la solicitud de cotización. Solo se acepta data URL de imagen y
+  // se acota el número y el tamaño: si no, un cliente podría mandar archivos
+  // enormes y reventar el límite del request o inflar cotizaciones.json.
+  // Tres fotos es lo que se pidió. El cuerpo del request entero está limitado a
+  // 3 MB, así que además de contar se suma el peso: mejor fewer fotos que
+  // devolver un error raro de "request too large" en pleno envío.
+  function sanitizaFotos(lista) {
+    if (!Array.isArray(lista)) return [];
+    const salida = [];
+    let total = 0;
+    for (const f of lista.slice(0, MAX_FOTOS_COTIZACION)) {
+      const s = String((f && f !== true ? f : '') || '').trim();
+      if (!s) continue;
+      // Solo data URL de imagen; cualquier otra cosa se descarta.
+      if (!/^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(s)) continue;
+      if (s.length > MAX_BYTES_FOTO_COTIZACION * 1.4) continue;
+      if (total + s.length > MAX_BYTES_TOTAL_FOTOS) break;
+      total += s.length;
+      salida.push(s);
+    }
+    return salida;
   }
   if (pathname === '/api/productos' && req.method === 'GET') {
     return sendJSON(res, 200, loadProductos());
