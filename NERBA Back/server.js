@@ -146,19 +146,68 @@ const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || '').trim();
 const GOOGLE_ALLOWED_DOMAIN = String(process.env.GOOGLE_ALLOWED_DOMAIN || '').trim().toLowerCase().replace(/^@/, '');
 
+// --- Cifrado de los archivos de datos -------------------------------------
+// En el disco quedan fotos de propiedades, direcciones, correos y telefonos en
+// JSON plano: con que alguien baje ese archivo se lleva todo. Si se define
+// DATA_KEY, todo lo que pasa por loadJSON/saveJSON se guarda cifrado con
+// AES-256-GCM y se descifra al leer, sin tocar el codigo que usa los datos.
+//
+// Formato en disco: un sobre JSON {"__nb_cifrado":1,"iv":..,"tag":..,"datos":".."}.
+// Un archivo plano se sigue leyendo bien, asi que los datos que ya estan
+// escritos se van cifrando solos en su siguiente guardado, sin migracion ni
+// paso manual. Sin DATA_KEY se sigue escribiendo en plano, pero avisa al
+// arrancar para que no se quede nadie creyendo que esta cifrado.
+const DATA_KEY_TXT = String(process.env.DATA_KEY || '').trim();
+const DATA_KEY = DATA_KEY_TXT
+  ? crypto.createHash('sha256').update(DATA_KEY_TXT, 'utf8').digest()
+  : null;
+function cifra(texto) {
+  if (!DATA_KEY) return texto;
+  const iv = crypto.randomBytes(12);
+  const cif = crypto.createCipheriv('aes-256-gcm', DATA_KEY, iv);
+  const out = Buffer.concat([cif.update(texto, 'utf8'), cif.final()]);
+  return JSON.stringify({ __nb_cifrado: 1, iv: iv.toString('base64'), tag: cif.getAuthTag().toString('base64'), datos: out.toString('base64') });
+}
+function descifra(sobre) {
+  if (!DATA_KEY || !sobre || sobre.__nb_cifrado !== 1) return sobre;
+  try {
+    const desc = crypto.createDecipheriv('aes-256-gcm', DATA_KEY, Buffer.from(sobre.iv, 'base64'));
+    desc.setAuthTag(Buffer.from(sobre.tag, 'base64'));
+    return JSON.parse(Buffer.concat([desc.update(Buffer.from(sobre.datos, 'base64')), desc.final()]).toString('utf8'));
+  } catch (e) {
+    // O la llave no es la de estos datos, o el archivo se corrompio. No se
+    // pisa nada: se avisa y se sigue con el fallback de siempre.
+    console.log('AVISO: no se pudo descifrar un archivo. Revisa DATA_KEY: ' + e.message);
+    return null;
+  }
+}
+
 function loadJSON(file, fallback) {
   try {
     if (fs.existsSync(file)) {
       // Sin esto, un BOM (PowerShell/Excel al editar) rompe el parseo y la
       // siguiente escritura vaciaría el archivo.
       const raw = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '');
-      return JSON.parse(raw);
+      let datos = JSON.parse(raw);
+      if (datos && datos.__nb_cifrado === 1) {
+        // El archivo esta cifrado y no hay llave (no se defini DATA_KEY o se
+        // cambio). Devolver el sobre seria peor que nada: el sistema creeria
+        // que no hay usuarios ni cotizaciones. Se avisa y se sigue con el
+        // fallback de siempre.
+        if (!DATA_KEY) {
+          console.log('AVISO: ' + file + ' esta cifrado y DATA_KEY no esta definida. Revisa la variable de entorno.');
+          return fallback;
+        }
+        datos = descifra(datos);
+        if (datos === null) return fallback;
+      }
+      return datos;
     }
   } catch (e) { console.log('Aviso cargando ' + file + ': ' + e.message); }
   return fallback;
 }
 function saveJSON(file, data) {
-  fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
+  fs.writeFileSync(file, cifra(JSON.stringify(data, null, 2)), 'utf8');
 }
 
 users = loadJSON(usersFile, {});
@@ -252,7 +301,7 @@ function loadAudit() {
   if (DB_MODE && cAudit) return cAudit;
   try {
     if (fs.existsSync(auditFile)) {
-      const d = JSON.parse(fs.readFileSync(auditFile, 'utf8'));
+      const d = loadJSON(auditFile, {});
       if (d && Array.isArray(d.items)) { if (DB_MODE) cAudit = d; return d; }
     }
   } catch {}
@@ -527,6 +576,18 @@ const CATALOGO = [
 
 // ---------- utilidades ----------
 function sha256(s) { return crypto.createHash('sha256').update(String(s)).digest('hex'); }
+// Regla de contrasena. Antes eran 6 caracteres, que con un scrypt bien hecho
+// todavia se abre con un diccionario pequeno. 8 es el minimo razonable para no
+// dar ventaja a los ataques de fuerza bruta sin volverla incomoda de escribir.
+// Todas las altas y los cambios de contrasena pasan por aqui, para que la regla
+// sea la misma en cada pantalla.
+const MIN_PASSWORD = 8;
+function problemaDePassword(password) {
+  const p = String(password == null ? '' : password);
+  if (p.length < MIN_PASSWORD) return 'La contrasena debe tener al menos ' + MIN_PASSWORD + ' caracteres.';
+  if (p.length > 200) return 'La contrasena es demasiado larga.';
+  return null;
+}
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
   const key = crypto.scryptSync(String(password), salt, 64).toString('hex');
@@ -575,9 +636,13 @@ function verifyGoogleCredential(credential) {
   });
 }
 
+// El token se genera aqui y se devuelve al cliente, pero lo que se guarda en
+// sesiones.json es su hash (sha256), igual que se hacia con los tokens de
+// recuperacion. Antes se guardaba el token en claro: quien pudiera leer ese
+// archivo podia escribir la sesion de cualquier cuenta y hacerse el pasa.
 function createSession(email) {
   const token = crypto.randomBytes(32).toString('hex');
-  sessions[token] = { email, expiresAt: Date.now() + SESSION_TTL_MS };
+  sessions[hashToken(token)] = { email, expiresAt: Date.now() + SESSION_TTL_MS };
   persistSessions();
   return token;
 }
@@ -611,6 +676,26 @@ function corsOrigin(req) {
   // el principal para que el navegador lo rechace, en vez de dejarlo pasar.
   return ORIGENES_PERMITIDOS.indexOf(o.replace(/\/$/, '')) > -1 ? o : ORIGENES_PERMITIDOS[0];
 }
+// Content-Security-Policy. En produccion la manda Cloudflare Pages (archivo
+// _headers del front); esta es la misma politica para cuando el backend sirve
+// el front en local, para no developsar con una seguridad distinta a la de
+// produccion. La lista de origenes sale de lo que el sitio usa de verdad.
+function cspHeader() {
+  const api = String(process.env.API_ORIGIN || 'https://backendnb-production.up.railway.app').replace(/\/$/, '');
+  return [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://accounts.google.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com data:",
+    "img-src 'self' data: blob: https://lh3.googleusercontent.com https://ui-avatars.com https://images.unsplash.com",
+    "connect-src 'self' " + api + ' https://accounts.google.com https://apis.google.com https://cdn.tailwindcss.com',
+    "frame-src 'self' blob: data: https://accounts.google.com",
+    "form-action 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'self'",
+  ].join('; ');
+}
 function sendJSON(res, status, obj, req) {
   const body = JSON.stringify(obj);
   res.writeHead(status, {
@@ -623,6 +708,7 @@ function sendJSON(res, status, obj, req) {
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'no-referrer',
     'X-Frame-Options': 'DENY',
+    'Content-Security-Policy': "default-src 'none'",
   });
   res.end(body);
 }
@@ -693,10 +779,13 @@ function getToken(req) {
   // NOTA: ya no se acepta ?token= por seguridad (quedaba en logs/historial/referer).
   return null;
 }
+// La tabla de sesiones esta indexada por el hash del token, no por el token.
 function userByToken(token) {
-  const session = token && sessions[token];
+  if (!token) return null;
+  const clave = hashToken(token);
+  const session = sessions[clave];
   if (!session || Number(session.expiresAt) <= Date.now()) {
-    if (token && sessions[token]) { delete sessions[token]; persistSessions(); }
+    if (session) { delete sessions[clave]; persistSessions(); }
     return null;
   }
   const u = users[session.email.toLowerCase()] || null;
@@ -884,7 +973,7 @@ async function manejar(req, res) {
     const password = String(body.password || '');
     if (!nombre || !email || !password) return sendJSON(res, 400, { error: 'Nombre, email y contrasena son obligatorios' });
     if (!email.includes('@')) return sendJSON(res, 400, { error: 'Email no valido' });
-    if (password.length < 6) return sendJSON(res, 400, { error: 'La contrasena debe tener al menos 6 caracteres' });
+    if (problemaDePassword(password)) return sendJSON(res, 400, { error: problemaDePassword(password) });
     if (users[email]) return sendJSON(res, 409, { error: 'Ese correo ya esta registrado. Inicia sesion.' });
     // El formulario de registro pide el telefono, pero antes se descartaba aqui y
     // publicUser lo devolvia vacio. Se guarda normalizado a solo digitos para que
@@ -958,7 +1047,7 @@ if (pathname === '/api/restablecer' && req.method === 'POST') {
   const r = tokenGuardado(hash);
   if (!r) return sendJSON(res, 400, { error: 'El enlace vencio o ya se uso. Pide uno nuevo.' }, req);
   const nueva = String(body.password || '');
-  if (nueva.length < 6) return sendJSON(res, 400, { error: 'La contrasena debe tener al menos 6 caracteres' }, req);
+  if (problemaDePassword(nueva)) return sendJSON(res, 400, { error: problemaDePassword(nueva) }, req);
   const u = users[r.email];
   if (!u) { delete resets[hash]; persistResets(); return sendJSON(res, 404, { error: 'La cuenta ya no existe' }, req); }
   u.passHash = hashPassword(nueva); u.passPropia = true;
@@ -1064,8 +1153,8 @@ if (pathname === '/api/login' && req.method === 'POST') {
   if (pathname === '/api/logout' && req.method === 'POST') {
     await readBody(req); // drenar cuerpo: si no se consume, Node puede tumbar el socket
     const token = getToken(req);
-    if (token && sessions[token]) {
-      delete sessions[token];
+    if (token && sessions[hashToken(token)]) {
+      delete sessions[hashToken(token)];
       persistSessions();
     }
     return sendJSON(res, 200, { ok: true });
@@ -1085,7 +1174,7 @@ if (pathname === '/api/login' && req.method === 'POST') {
       if (body.empresa !== undefined) u.empresa = String(body.empresa).trim().slice(0, 160);
       if (body.tema === 'dark' || body.tema === 'light') u.tema = body.tema;
       if (body.newPassword) {
-        if (String(body.newPassword).length < 6) return sendJSON(res, 400, { error: 'La nueva contrasena debe tener al menos 6 caracteres' });
+        if (problemaDePassword(body.newPassword)) return sendJSON(res, 400, { error: problemaDePassword(body.newPassword) });
         if (!verifyPassword(body.currentPassword || '', u.passHash)) return sendJSON(res, 401, { error: 'La contrasena actual es incorrecta' });
         u.passHash = hashPassword(body.newPassword);
       }
@@ -1122,7 +1211,7 @@ if (pathname === '/api/login' && req.method === 'POST') {
         // (autocontenido: loadMant/persistMant se declaran mas abajo en el handler)
         const mf = path.join(DATA_DIR, 'mantenimiento.json');
         let lista = [];
-        try { if (fs.existsSync(mf)) lista = JSON.parse(fs.readFileSync(mf, 'utf8')) || []; } catch (e) {}
+        try { lista = loadJSON(mf, []) || []; } catch (e) {}
         const filtrada = lista.filter((m) => String(m.email || '').toLowerCase() !== email);
         if (filtrada.length !== lista.length) {
           saveJSON(mf, filtrada);
@@ -1348,7 +1437,7 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
     const password = String(body.password || '');
     const rol = String(body.rol || 'CLIENTE').toUpperCase();
     if (!nombre || !email || !email.includes('@')) return sendJSON(res, 400, { error: 'Nombre y email valido son obligatorios' });
-    if (password.length < 6) return sendJSON(res, 400, { error: 'La contrasena debe tener al menos 6 caracteres' });
+    if (problemaDePassword(password)) return sendJSON(res, 400, { error: problemaDePassword(password) });
     if (!['CLIENTE', 'ADMIN', 'SUPERADMIN', 'PROYECTOS_ESPECIALES', 'PRODUCTOS_ELECTRONICOS'].includes(rol)) return sendJSON(res, 400, { error: 'Rol no valido' });
     if (users[email]) return sendJSON(res, 409, { error: 'Ese correo ya esta registrado' });
     users[email] = {
@@ -1392,7 +1481,7 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
       target.activo = !!body.activo;
     }
     if (body.newPassword) {
-      if (String(body.newPassword).length < 6) return sendJSON(res, 400, { error: 'La nueva contrasena debe tener al menos 6 caracteres' });
+      if (problemaDePassword(body.newPassword)) return sendJSON(res, 400, { error: problemaDePassword(body.newPassword) });
       target.passHash = hashPassword(body.newPassword); target.passPropia = true;
       logAudit(req, { modulo: 'usuarios', evento: 'cambio-password', detalle: target.nombre, usuario: email });
     }
@@ -1574,7 +1663,10 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
   const contactoFile = path.join(DATA_DIR, 'contacto.json');
   function loadContacto() {
     if (DB_MODE && cContacto) return cContacto;
-    try { if (fs.existsSync(contactoFile)) { const l = JSON.parse(fs.readFileSync(contactoFile, 'utf8')); if (DB_MODE) cContacto = l; return l; } } catch {}
+    try {
+      const l = loadJSON(contactoFile, {});
+      if (l) { if (DB_MODE) cContacto = l; return l; }
+    } catch {}
     return [];
   }
   function saveContacto(lista) {
@@ -1638,7 +1730,7 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
     // que el staff si habia ordenado.
     if (DB_MODE && cServicios) return normalizaOrden(cServicios);
     try {
-      if (fs.existsSync(serviciosFile)) { const l = JSON.parse(fs.readFileSync(serviciosFile, 'utf8')); if (DB_MODE) cServicios = l; return normalizaOrden(l); }
+      { const l = loadJSON(serviciosFile, null); if (l) { if (DB_MODE) cServicios = l; return normalizaOrden(l); } }
       if (fs.existsSync(serviciosSeed)) {
         const seed = JSON.parse(fs.readFileSync(serviciosSeed, 'utf8'));
         saveJSON(serviciosFile, seed);
@@ -1782,7 +1874,7 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
   function loadProductos() {
     if (DB_MODE && cProductos) return cProductos;
     try {
-      if (fs.existsSync(productosFile)) { const l = JSON.parse(fs.readFileSync(productosFile, 'utf8')); if (DB_MODE) cProductos = l; return l; }
+      { const l = loadJSON(productosFile, null); if (l) { if (DB_MODE) cProductos = l; return l; } }
       if (fs.existsSync(productosSeed)) {
         const seed = JSON.parse(fs.readFileSync(productosSeed, 'utf8'));
         saveJSON(productosFile, seed);
@@ -1930,7 +2022,7 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
   }
   function loadMarcas() {
     if (DB_MODE && cMarcas) return cMarcas;
-    try { if (fs.existsSync(marcasFile)) { const o = JSON.parse(fs.readFileSync(marcasFile, 'utf8')); if (DB_MODE) cMarcas = o; return o; } } catch {}
+    try { const o = loadJSON(marcasFile, null); if (o) { if (DB_MODE) cMarcas = o; return o; } } catch {}
     return {};
   }
   function saveMarcas(o) { saveJSON(marcasFile, o); if (DB_MODE) { cMarcas = o; db.wt(db.replaceAll('kv_marcas', o)); } }
@@ -1986,7 +2078,7 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
   const categoriasFile = path.join(DATA_DIR, 'categorias.json');
   function loadCategorias() {
     if (DB_MODE && cCategorias) return cCategorias;
-    try { if (fs.existsSync(categoriasFile)) { const o = JSON.parse(fs.readFileSync(categoriasFile, 'utf8')); if (DB_MODE) cCategorias = o; return o; } } catch {}
+    try { const o = loadJSON(categoriasFile, null); if (o) { if (DB_MODE) cCategorias = o; return o; } } catch {}
     return {};
   }
   function saveCategorias(o) { saveJSON(categoriasFile, o); if (DB_MODE) { cCategorias = o; db.wt(db.replaceAll('kv_categorias', o)); } }
@@ -2045,7 +2137,7 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
   const mantFile = path.join(DATA_DIR, 'mantenimiento.json');
   function loadMant() {
     if (DB_MODE && cMant) return cMant;
-    try { if (fs.existsSync(mantFile)) { const l = JSON.parse(fs.readFileSync(mantFile, 'utf8')); if (DB_MODE) cMant = l; return l; } } catch {}
+    try { const l = loadJSON(mantFile, null); if (l) { if (DB_MODE) cMant = l; return l; } } catch {}
     return [];
   }
   function persistMant(list) {
@@ -2177,6 +2269,7 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'no-referrer',
     'X-Frame-Options': 'SAMEORIGIN',
+    'Content-Security-Policy': cspHeader(),
     'Last-Modified': stat.mtime.toUTCString(),
     'Cache-Control': ext === 'html' || ext === 'js' || ext === 'css' || ext === 'json'
       ? 'no-cache' : 'public, max-age=3600',
@@ -2245,7 +2338,12 @@ async function start() {
     console.log('Frontend: ' + FRONT_DIR);
     console.log('Data: ' + (DB_MODE ? 'Postgres' : DATA_DIR));
     console.log(`Usuarios: ${Object.keys(users).length} | Cotizaciones: ${Object.keys(quotes).length}`);
-    console.log('Sesiones con expiracion de 8 horas activadas.');
+    console.log('Sesiones con expiracion de 8 horas activadas (el token se guarda hasheado).');
+    // Avisos de seguridad: que un descuido de configuracion se vea en el log
+    // del despliegue, no cuando alguien descubra el enlace de una cuenta.
+    if (RECOVERY_DEBUG) console.log('AVISO DE SEGURIDAD: RECOVERY_DEBUG=1 devuelve el enlace de recuperacion en la respuesta de la API.');
+    if (!DB_MODE && !DATA_KEY) console.log('AVISO DE SEGURIDAD: sin DATA_KEY los archivos de datos se guardan SIN CIFRAR (correos, telefonos y fotos de propiedades).');
+    if (DATA_KEY) console.log('Datos en disco cifrados con AES-256-GCM (DATA_KEY).');
     console.log(`Listo en http://localhost:${PORT}`);
   });
 }
