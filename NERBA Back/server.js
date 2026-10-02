@@ -1927,6 +1927,41 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
     return sendJSON(res, 200, m);
   }
 
+  // ----- PDF real de la ficha de mantenimiento (misma plantilla del servidor) -----
+  const mMantPdf = /^\/api\/mantenimiento\/(.+)\/pdf$/.exec(pathname);
+  if (mMantPdf && req.method === 'GET') {
+    const u = userByToken(getToken(req));
+    if (!u) return sendJSON(res, 401, { error: 'Inicia sesion para descargar el documento' }, req);
+    const lista = loadMant();
+    const m = lista.find((x) => x.id === mMantPdf[1]);
+    if (!m) return sendJSON(res, 404, { error: 'No encontrada' }, req);
+    const propia = m.email && u.email && String(m.email).toLowerCase() === String(u.email).toLowerCase();
+    if (!isStaff(u) && !propia) return sendJSON(res, 403, { error: 'No tienes permiso para descargar este documento' }, req);
+    let pdf;
+    try {
+      pdf = require('./pdf');
+    } catch (e) {
+      return sendJSON(res, 501, { error: 'Generador PDF no disponible en este despliegue.' }, req);
+    }
+    let buf;
+    try {
+      buf = await pdf.generarMant(m);
+    } catch (e) {
+      console.log('Aviso PDF ' + m.id + ': ' + e.message);
+      return sendJSON(res, 500, { error: 'No se pudo generar el documento.' }, req);
+    }
+    logAudit(req, { modulo: 'mantenimiento', evento: 'descarga-pdf', detalle: m.id, folio: m.id });
+    res.writeHead(200, {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': 'attachment; filename="' + String(m.id).replace(/[^A-Za-z0-9._-]+/g, '_') + '.pdf"',
+      'Content-Length': buf.length,
+      'Cache-Control': 'no-store',
+      'Access-Control-Allow-Origin': corsOrigin(req),
+      'Vary': 'Origin',
+    });
+    return res.end(buf);
+  }
+
   if (pathname.startsWith('/api/')) return sendJSON(res, 404, { error: 'Ruta API no encontrada' });
 
   // ----- archivos estaticos del frontend (desactivable en deploy separado) -----

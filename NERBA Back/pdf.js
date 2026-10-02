@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 /**
  * Grupo NERBA HIDALGO - PDF real de cotizaciones (una sola plantilla).
  * Todas las areas descargan el mismo formato: antes cada zona armaba su
@@ -9,11 +11,55 @@ const TINTA = '#0b1c30';
 const GRIS = '#64748b';
 const LINEA = '#e2e8f0';
 
+// Logo oficial. Vive en NERBA Back/assets/logo.png para no depender del
+// frontend (en Railway el backend corre solo, sin la carpeta del front).
+// Si falta, el documento sale con el nombre en texto, sin romperse.
+let LOGO_BUF = null;
+try {
+  const f = path.join(__dirname, 'assets', 'logo.png');
+  if (fs.existsSync(f)) LOGO_BUF = fs.readFileSync(f);
+} catch (e) { LOGO_BUF = null; }
+
 function txt(v) { return String(v == null ? '' : v); }
 function fechaCorta(iso) {
   const s = txt(iso).slice(0, 10);
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
   return m ? m[3] + '/' + m[2] + '/' + m[1] : (s || '—');
+}
+
+// Cabecera comun: logo oficial a la izquierda (ya trae la marca) y folio a
+// la derecha. Sin logo, el nombre en texto como respaldo. Devuelve la y lista.
+function cabecera(doc, W, y, pill, folio, fem) {
+  const LOGO_W = 96, LOGO_H = 30;
+  let conLogo = false;
+  if (LOGO_BUF) {
+    try {
+      doc.image(LOGO_BUF, 45, y, { fit: [LOGO_W, LOGO_H] });
+      conLogo = true;
+    } catch (e) { conLogo = false; }
+  }
+  if (!conLogo) {
+    doc.fillColor(ROJO).fontSize(15).font('Helvetica-Bold')
+      .text('Grupo NERBA HIDALGO', 45, y, { width: W - 180 });
+    doc.fillColor(GRIS).fontSize(8).font('Helvetica-Bold')
+      .text('GRUPO EMPRESARIAL NERBA S.A DE C.V', 45, doc.y + 1, { width: W - 180 });
+  }
+  const pw = doc.widthOfString(pill) + 18;
+  doc.fillColor(ROJO).fontSize(8).font('Helvetica-Bold')
+    .text(pill, 45 + W - pw, y, { width: pw, align: 'center' });
+  doc.fillColor(TINTA).fontSize(13).font('Helvetica-Bold')
+    .text(folio, 45 + W - 180, doc.y + 3, { width: 180, align: 'right' });
+  doc.fillColor(GRIS).fontSize(8).font('Helvetica')
+    .text(fem, 45, doc.y + 3, { width: W, align: 'right' });
+  // El logo es imagen (no mueve el cursor de texto): se aparta a mano.
+  y = Math.max(doc.y + 8, 40 + LOGO_H + 10);
+  doc.strokeColor(ROJO).lineWidth(1.5).moveTo(45, y).lineTo(45 + W, y).stroke();
+  return y + 12;
+}
+
+function piePagina(doc, W, texto) {
+  doc.fillColor('#94a3b8').fontSize(7.5).font('Helvetica')
+    .text(texto, 45, Math.max(doc.y + 8, doc.page.height - 70), { width: W, align: 'center' });
 }
 
 function generar(c) {
@@ -29,23 +75,9 @@ function generar(c) {
       const W = doc.page.width - 90;
       let y = doc.y;
 
-      // Encabezado
-      doc.fillColor(ROJO).fontSize(15).font('Helvetica-Bold')
-        .text('Grupo NERBA HIDALGO', 45, y, { width: W - 180 });
-      doc.fillColor(GRIS).fontSize(8).font('Helvetica-Bold')
-        .text('GRUPO EMPRESARIAL NERBA S.A DE C.V', 45, doc.y + 1, { width: W - 180 });
-      const pill = 'SOLICITUD DE COTIZACIÓN';
-      const pw = doc.widthOfString(pill) + 18;
-      doc.fillColor(ROJO).fontSize(8).font('Helvetica-Bold')
-        .text(pill, 45 + W - pw, y, { width: pw, align: 'center' });
-      doc.fillColor(TINTA).fontSize(13).font('Helvetica-Bold')
-        .text(txt(c.folio), 45 + W - 180, doc.y + 3, { width: 180, align: 'right' });
-      doc.fillColor(GRIS).fontSize(8).font('Helvetica')
-        .text('Emitida: ' + fechaCorta(c.fecha) + (c.validez ? '  ·  Válida hasta ' + fechaCorta(c.validez) : '') +
-          '  ·  Estado: ' + txt(c.estado || 'PENDIENTE'), 45, doc.y + 3, { width: W, align: 'right' });
-      y = doc.y + 8;
-      doc.strokeColor(ROJO).lineWidth(1.5).moveTo(45, y).lineTo(45 + W, y).stroke();
-      y += 12;
+      y = cabecera(doc, W, y, 'SOLICITUD DE COTIZACIÓN', txt(c.folio),
+        'Emitida: ' + fechaCorta(c.fecha) + (c.validez ? '  ·  Válida hasta ' + fechaCorta(c.validez) : '') +
+        '  ·  Estado: ' + txt(c.estado || 'PENDIENTE'));
 
       // Tarjetas lado a lado
       const colW = (W - 10) / 2;
@@ -97,10 +129,60 @@ function generar(c) {
       }
 
       // Pie
-      const pieY = Math.max(y + 8, doc.page.height - 70);
-      doc.fillColor('#94a3b8').fontSize(7.5).font('Helvetica')
-        .text('Documento generado por Grupo NERBA HIDALGO. No válido para efectos fiscales.   ' +
-          txt(c.folio) + ' · ' + fechaCorta(c.fecha), 45, pieY, { width: W, align: 'center' });
+      piePagina(doc, W, 'Documento generado por Grupo NERBA HIDALGO. No válido para efectos fiscales.   ' +
+        txt(c.folio) + ' · ' + fechaCorta(c.fecha));
+
+      doc.end();
+    } catch (e) { reject(e); }
+  });
+}
+
+function generarMant(m) {
+  const PDFDocument = require('pdfkit');
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margins: { top: 40, bottom: 50, left: 45, right: 45 } });
+      const partes = [];
+      doc.on('data', (d) => partes.push(d));
+      doc.on('error', reject);
+      doc.on('end', () => resolve(Buffer.concat(partes)));
+
+      const W = doc.page.width - 90;
+      let y = doc.y;
+
+      y = cabecera(doc, W, y, 'FICHA DE MANTENIMIENTO', txt(m.id),
+        'Fecha: ' + fechaCorta(m.fecha) + (m.folio ? '  ·  Cotización de origen: ' + txt(m.folio) : ''));
+
+      const colW = (W - 10) / 2;
+      const y0 = y;
+      y = tarjeta(doc, 45, y0, colW, 'Datos del solicitante', [
+        ['Titular', m.nombre], ['Correo', m.email], ['Teléfono', m.telefono],
+      ]);
+      const yIzq = y;
+      y = tarjeta(doc, 45 + colW + 10, y0, colW, 'Datos de la instalación', [
+        ['Estado', m.estado], ['Fecha', fechaCorta(m.fecha)], ['Ubicación', m.direccion],
+      ]);
+      y = Math.max(yIzq, y) + 12;
+
+      y = seccion(doc, y, W, 'Motivo de la solicitud');
+      y = caja(doc, y, W, txt(m.descripcion) || '—') + 12;
+
+      const fotos = (Array.isArray(m.fotos) ? m.fotos : []).filter((s) => typeof s === 'string' && s.indexOf('data:image/') === 0).slice(0, 3);
+      if (fotos.length) {
+        y = seccion(doc, y, W, 'Fotografías del inmueble');
+        if (y > 640) { doc.addPage(); y = 60; }
+        const fw = (W - 14) / 3;
+        fotos.forEach((s, i) => {
+          try {
+            const b64 = s.slice(s.indexOf(',') + 1);
+            doc.image(Buffer.from(b64, 'base64'), 45 + i * (fw + 7), y, { fit: [fw, 85] });
+          } catch (e) { /* foto corrupta: se omite */ }
+        });
+        y += 95;
+      }
+
+      piePagina(doc, W, 'Documento generado por Grupo NERBA HIDALGO. No válido para efectos fiscales.   ' +
+        txt(m.id) + ' · ' + fechaCorta(m.fecha));
 
       doc.end();
     } catch (e) { reject(e); }
@@ -170,4 +252,4 @@ function tabla(doc, y, w, items) {
   return yy;
 }
 
-module.exports = { generar };
+module.exports = { generar, generarMant };
