@@ -1310,6 +1310,24 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
     return sendJSON(res, 200, { total: a.items.length, totalFiltered: items.length, items: items.slice(0, limit).map(publicAudit) });
   }
 
+  // Vaciar la bitácora. Es una acción destructiva, así que se exige una
+  // confirmación escrita: mandar "BORRAR" de vuelta. Aunque llegue el request
+  // mal, no se borra nada.
+  if (pathname === '/api/auditoria' && req.method === 'DELETE') {
+    const u = userByToken(getToken(req));
+    if (!u || u.rol !== 'SUPERADMIN') return sendJSON(res, 403, { error: 'Solo SUPERADMIN' });
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    if (String(body.confirmar || '').trim().toUpperCase() !== 'BORRAR') {
+      return sendJSON(res, 400, { error: 'Falta la confirmacion. Escribe BORRAR para vaciar la bitacora.' });
+    }
+    const antes = loadAudit().items.length;
+    persistAudit({ items: [], lastHash: 'GENESIS' });
+    // Queda constancia de que se vacio, para que el borrado no quede sin rastro.
+    logAudit(req, { modulo: 'accesos', evento: 'bitacora-vaciada', detalle: 'Se borraron ' + antes + ' registros a peticion del SUPERADMIN', usuario: u.email });
+    return sendJSON(res, 200, { ok: true, borrados: antes });
+  }
+
   // ----- staff: cambiar estado de cotizacion -----
   const mEstado = /^\/api\/cotizaciones\/(.+)\/estado$/.exec(pathname);
   if (mEstado && req.method === 'PUT') {
