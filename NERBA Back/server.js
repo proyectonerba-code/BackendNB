@@ -725,6 +725,23 @@ function quoteScope(u, c) {
 function canSeeQuoteAudit(u) {
   return !!(u && (u.rol === 'ADMIN' || u.rol === 'SUPERADMIN' || u.rol === 'PROYECTOS_ESPECIALES'));
 }
+// --- Borrado por lado -----------------------------------------------------
+// Antes, DELETE /api/cotizaciones/:folio borraba el registro para siempre: si un
+// admin lo eliminaba desde su panel, la cotizacion desaparecia tambien para el
+// cliente, que es su documento. Ahora es borrado logico y cada quien decide
+// sobre lo suyo: el personal la oculta para el personal y el cliente la oculta
+// para su cuenta. El registro nunca se borra solo.
+function esPersonal(u) {
+  return !!(u && (isStaff(u) || u.rol === 'PROYECTOS_ESPECIALES'));
+}
+function ocultaStaff(c) { return !!(c && c.oculta && c.oculta.staff); }
+function ocultaCliente(c) { return !!(c && c.oculta && c.oculta.cliente); }
+// El SUPERADMIN siempre ve todas para poder supervisar y corregir.
+function quoteVisible(c, u) {
+  if (!c || !u) return false;
+  if (u.rol === 'SUPERADMIN') return true;
+  return esPersonal(u) ? !ocultaStaff(c) : !ocultaCliente(c);
+}
 function quoteForUser(c, u) {
   const out = { ...c };
   if (!canSeeQuoteAudit(u)) {
@@ -732,6 +749,10 @@ function quoteForUser(c, u) {
     delete out.estadoActualizadoPor;
     delete out.estadoActualizadoAt;
   }
+  // Marcas de borrado logico para que cada panel sepa que hacer.
+  out.ocultaStaff = ocultaStaff(c);
+  out.ocultaCliente = ocultaCliente(c);
+  if (!out.oculta && !out.ocultaStaff && !out.ocultaCliente) delete out.oculta;
   return out;
 }
 function recordQuoteState(c, u, anterior, estado) {
@@ -1129,8 +1150,10 @@ if (pathname === '/api/login' && req.method === 'POST') {
     const u = userByToken(token);
     if (!u) return sendJSON(res, 401, { error: 'Inicia sesion para consultar cotizaciones' });
     let lista = Object.values(quotes).sort((a, b) => (a.folio < b.folio ? 1 : -1));
-    // Cada rol ve solo su zona (ver quoteScope); el filtro ?email= es solo staff.
-    lista = lista.filter((c) => quoteScope(u, c));
+    // Cada rol ve solo su zona (ver quoteScope) y solo lo que no tiene oculto:
+    // si el personal la occulto en su panel, el cliente la sigue viendo, y al
+    // reves. El filtro ?email= es solo staff.
+    lista = lista.filter((c) => quoteScope(u, c) && quoteVisible(c, u));
     const emailFiltro = String(url.searchParams.get('email') || '').trim().toLowerCase();
     if (emailFiltro && (u.rol === 'ADMIN' || u.rol === 'SUPERADMIN')) {
       lista = lista.filter((c) => c.email && String(c.email).trim().toLowerCase() === emailFiltro);
@@ -1142,7 +1165,7 @@ if (pathname === '/api/login' && req.method === 'POST') {
     const u = userByToken(getToken(req));
     if (!u || (u.rol !== 'ADMIN' && u.rol !== 'SUPERADMIN')) return sendJSON(res, 403, { error: 'Solo Admin puede consultar el Historial General' });
     const lista = Object.values(quotes)
-      .filter((c) => quoteScope(u, c))
+      .filter((c) => quoteScope(u, c) && quoteVisible(c, u))
       .sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')))
       .map((c) => quoteForUser(c, u));
     return sendJSON(res, 200, lista);
@@ -1235,6 +1258,8 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
     const c = quotes[mPdf[1]];
     if (!c) return sendJSON(res, 404, { error: 'No encontrada' }, req);
     if (!quoteScope(u, c)) return sendJSON(res, 403, { error: 'No tienes permiso para descargar esta cotizacion' }, req);
+    // Si el cliente la occulto en su cuenta, tampoco puede descargarla.
+    if (!quoteVisible(c, u)) return sendJSON(res, 404, { error: 'No encontrada' }, req);
     let pdf;
     try {
       pdf = require('./pdf');
@@ -1267,6 +1292,7 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
     const c = quotes[mFolio[1]];
     if (!c) return sendJSON(res, 404, { error: 'No encontrada' });
     if (!quoteScope(u, c)) return sendJSON(res, 403, { error: 'No tienes permiso para consultar esta cotizacion' });
+    if (!quoteVisible(c, u)) return sendJSON(res, 404, { error: 'No encontrada' });
     return sendJSON(res, 200, quoteForUser(c, u));
   }
 
@@ -1460,20 +1486,65 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
     return sendJSON(res, 200, c);
   }
 
-  // ----- eliminar cotizacion (staff todo, PE las de su area, cliente las suyas) -----
+  // ----- ocultar / eliminar cotizacion (cada rol decide sobre la suya) -----
+  // Antes esto borraba el registro para siempre: si un admin lo eliminaba desde
+  // su panel, la cotizacion desaparecia tambien para el cliente, que es su
+  // documento. Ahora es borrado logico por lado:
+  //   - el personal la occulta para el personal (el cliente la sigue viendo),
+  //   - el cliente la occulta en su cuenta (el personal la sigue viendo),
+  //   - el SUPERADMIN puede pedir el borrado definitivo con ambito "todos".
   const mDel = /^\/api\/cotizaciones\/([^/]+)$/.exec(pathname);
   if (mDel && req.method === 'DELETE') {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
     const u = userByToken(getToken(req));
     const c = quotes[mDel[1]];
     if (!c) return sendJSON(res, 404, { error: 'No encontrada' });
     const puedePE = u && u.rol === 'PROYECTOS_ESPECIALES' && c.area === 'PROYECTOS_ESPECIALES';
-    if (!quoteScope(u, c) || (!isStaff(u) && !puedePE && (!c.email || !u.email || c.email.toLowerCase() !== u.email.toLowerCase()))) {
+    // Solo dentro de su zona: un rol nunca borra cotizaciones de otro. El
+    // cliente unicamente las propias (quoteScope ya excluye las demo).
+    const esDueno = u && u.rol === 'CLIENTE' && c.email && u.email && c.email.toLowerCase() === u.email.toLowerCase();
+    if (!u || !quoteScope(u, c) || (!isStaff(u) && !puedePE && !esDueno)) {
       return sendJSON(res, 403, { error: 'No tienes permiso para eliminar esta cotizacion' });
     }
-    delete quotes[mDel[1]];
+    if (u.rol === 'SUPERADMIN' && body.ambito === 'todos') {
+      delete quotes[mDel[1]];
+      persistQuotes();
+      logAudit(req, { modulo: 'cotizaciones', evento: 'baja-definitiva', detalle: (c.producto || '') + ' de ' + (c.email || ''), folio: mDel[1] });
+      return sendJSON(res, 200, { ok: true, ambito: 'todos' });
+    }
+    if (!c.oculta || typeof c.oculta !== 'object') c.oculta = {};
+    const lado = esPersonal(u) ? 'staff' : 'cliente';
+    if (c.oculta[lado]) return sendJSON(res, 200, { ok: true, ambito: lado, yaOculta: true });
+    c.oculta[lado] = { por: u.email, nombre: u.nombre, rol: u.rol, fecha: new Date().toISOString() };
     persistQuotes();
-    logAudit(req, { modulo: 'cotizaciones', evento: 'baja', detalle: (c.producto || '') + ' de ' + (c.email || ''), folio: mDel[1] });
-    return sendJSON(res, 200, { ok: true });
+    logAudit(req, {
+      modulo: 'cotizaciones',
+      evento: lado === 'staff' ? 'baja-panel' : 'baja-cliente',
+      detalle: (c.producto || '') + ' de ' + (c.email || '') +
+        (lado === 'staff' ? ' (oculta al personal; el cliente la sigue viendo)' : ' (oculta al cliente; el personal la sigue viendo)'),
+      folio: mDel[1],
+    });
+    return sendJSON(res, 200, { ok: true, ambito: lado });
+  }
+
+  // ----- restaurar una cotizacion oculta (solo SUPERADMIN) -----
+  // Sin esto, un borrado-logico mal hecho por el personal se perdia para
+  // siempre sin que nadie lo notara.
+  const mRest = /^\/api\/cotizaciones\/([^/]+)\/restaurar$/.exec(pathname);
+  if (mRest && req.method === 'PUT') {
+    const u = userByToken(getToken(req));
+    if (!u || u.rol !== 'SUPERADMIN') return sendJSON(res, 403, { error: 'Solo el Super Admin puede restaurar cotizaciones' });
+    const c = quotes[mRest[1]];
+    if (!c) return sendJSON(res, 404, { error: 'No encontrada' });
+    if (c.oculta && typeof c.oculta === 'object') {
+      delete c.oculta.staff;
+      delete c.oculta.cliente;
+      if (!Object.keys(c.oculta).length) delete c.oculta;
+    }
+    persistQuotes();
+    logAudit(req, { modulo: 'cotizaciones', evento: 'restauracion', detalle: 'Vuelta a verse en ambos paneles: ' + (c.producto || ''), folio: mRest[1] });
+    return sendJSON(res, 200, quoteForUser(c, u));
   }
 
   // ----- mensajes de contacto -----
