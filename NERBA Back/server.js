@@ -209,6 +209,14 @@ function loadJSON(file, fallback) {
 function saveJSON(file, data) {
   fs.writeFileSync(file, cifra(JSON.stringify(data, null, 2)), 'utf8');
 }
+// Igual que saveJSON pero escribiendo a un archivo temporal y renombrando al
+// final: si el proceso se muere a mitad, el archivo bueno sigue intacto en vez
+// de quedar truncado.
+function writeJSONAtomico(file, data) {
+  const tmp = file + '.tmp';
+  fs.writeFileSync(tmp, cifra(JSON.stringify(data, null, 2)), 'utf8');
+  fs.renameSync(tmp, file);
+}
 
 users = loadJSON(usersFile, {});
 // Las sesiones previas del demo no incluían expiración. Se invalidan al actualizar
@@ -291,9 +299,50 @@ function seedUsers() {
 }
 seedUsers();
 
-function persistUsers() { saveJSON(usersFile, users); if (DB_MODE) db.wt(db.replaceAll('kv_users', users)); }
-function persistSessions() { saveJSON(sessionsFile, sessions); if (DB_MODE) db.wt(db.replaceAll('kv_sessions', sessions)); }
-function persistQuotes() { saveJSON(quotesFile, Object.values(quotes)); if (DB_MODE) db.wt(db.replaceAll('kv_quotes', quotes)); }
+// Guardado. Cada cambio escribe SOLO lo que cambio en Postgres (antes se
+// reescribia la tabla completa fila por fila, y con 400 cotizaciones aprobar una
+// sola tardaba segundos). El archivo local sigue siendo la copia de respaldo,
+// pero se escribe fuera del hilo principal: antes un writeFileSync de cientos
+// de MB congelaba el servidor entero y nadie recibia nada.
+// Sin valor a proposito: seedDemo() corre al cargar el modulo (llama a
+// persistQuotes antes de que el archivo llegue aqui), y cualquier asignacion en
+// esta linea se ejecutaria DESPUES y dejaria la cola en null otra vez. Con var
+// sin valor solo se declara, y el array se crea en el primer uso.
+var COLA_ESCRITURA;
+function guardarJSONDespues(file, data) {
+  if (!COLA_ESCRITURA) COLA_ESCRITURA = [];
+  COLA_ESCRITURA.push(function () { return writeJSONAtomico(file, data); });
+  if (COLA_ESCRITURA.length === 1) {
+    setImmediate(function () {
+      const trabajo = COLA_ESCRITURA.splice(0, COLA_ESCRITURA.length);
+      Promise.resolve()
+        .then(function () { return trabajo.reduce(function (p, f) { return p.then(f); }, Promise.resolve()); })
+        .catch(function (e) { console.log('Aviso escribiendo ' + file + ': ' + e.message); });
+    });
+  }
+}
+function persistUsers(email) {
+  if (email && DB_MODE) db.wt(db.upsert('kv_users', email, users[email]));
+  else if (DB_MODE) db.wt(db.replaceAll('kv_users', users));
+  guardarJSONDespues(usersFile, users);
+}
+function persistSessions(clave) {
+  if (clave && DB_MODE) db.wt(db.upsert('kv_sessions', clave, sessions[clave]));
+  else if (DB_MODE) db.wt(db.replaceAll('kv_sessions', sessions));
+  guardarJSONDespues(sessionsFile, sessions);
+}
+// folio: la cotizacion que cambio. Sin folio (carga inicial, restauraciones
+// masivas) se cae al comportamiento de antes, que reescribe todo.
+function persistQuotes(folio) {
+  if (folio && DB_MODE && quotes[folio]) db.wt(db.upsert('kv_quotes', folio, quotes[folio]));
+  else if (DB_MODE) db.wt(db.replaceAll('kv_quotes', quotes));
+  guardarJSONDespues(quotesFile, Object.values(quotes));
+}
+function borrarQuoteEnDb(folio) {
+  delete quotes[folio];
+  if (DB_MODE) db.wt(db.borrar('kv_quotes', folio));
+  persistQuotes();
+}
 
 // ---------- bitacora de auditoria (solo SUPERADMIN la consulta) ----------
 const auditFile = path.join(DATA_DIR, 'auditoria.json');
@@ -785,7 +834,7 @@ function userByToken(token) {
   const clave = hashToken(token);
   const session = sessions[clave];
   if (!session || Number(session.expiresAt) <= Date.now()) {
-    if (session) { delete sessions[clave]; persistSessions(); }
+    if (session) { delete sessions[clave]; persistSessions(clave); }
     return null;
   }
   const u = users[session.email.toLowerCase()] || null;
@@ -837,7 +886,17 @@ function quoteVisible(c, u) {
   if (u.rol === 'SUPERADMIN') return true;
   return esPersonal(u) ? !ocultaStaff(c) : !ocultaCliente(c);
 }
-function quoteForUser(c, u) {
+// En las LISTAS no se viajan las fotos: solo cuantas tiene.
+//
+// Antes cada panel (admin, superadmin, historial, el del cliente) se descargaba
+// TODAS las fotos de TODAS las cotizaciones al refrescar. Con 200 cotizaciones
+// de 5 fotos eran 183 MB por visita, y el panel se volvia inservible con
+// internet normal. Ahora la lista viaja ligera y las fotos se piden por
+// cotizacion (GET /api/cotizaciones/:folio) solo cuando de verdad se van a ver.
+//
+// Los PDF no se ven afectados: el servidor los arma con su propia copia de la
+// cotizacion, no con lo que devolvio esta lista.
+function quoteForUser(c, u, opciones) {
   const out = { ...c };
   if (!canSeeQuoteAudit(u)) {
     delete out.estadoHistorial;
@@ -848,6 +907,10 @@ function quoteForUser(c, u) {
   out.ocultaStaff = ocultaStaff(c);
   out.ocultaCliente = ocultaCliente(c);
   if (!out.oculta && !out.ocultaStaff && !out.ocultaCliente) delete out.oculta;
+  if (opciones && opciones.sinFotos) {
+    out.fotosN = Array.isArray(c.fotos) ? c.fotos.length : 0;
+    delete out.fotos;
+  }
   return out;
 }
 function recordQuoteState(c, u, anterior, estado) {
@@ -1253,7 +1316,7 @@ if (pathname === '/api/login' && req.method === 'POST') {
     if (emailFiltro && (u.rol === 'ADMIN' || u.rol === 'SUPERADMIN')) {
       lista = lista.filter((c) => c.email && String(c.email).trim().toLowerCase() === emailFiltro);
     }
-    return sendJSON(res, 200, lista.map((c) => quoteForUser(c, u)));
+    return sendJSON(res, 200, lista.map((c) => quoteForUser(c, u, { sinFotos: true })));
   }
 
   if (pathname === '/api/cotizaciones/historial' && req.method === 'GET') {
@@ -1262,7 +1325,7 @@ if (pathname === '/api/login' && req.method === 'POST') {
     const lista = Object.values(quotes)
       .filter((c) => quoteScope(u, c) && quoteVisible(c, u))
       .sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')))
-      .map((c) => quoteForUser(c, u));
+      .map((c) => quoteForUser(c, u, { sinFotos: true }));
     return sendJSON(res, 200, lista);
   }
 

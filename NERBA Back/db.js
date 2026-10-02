@@ -44,6 +44,55 @@ async function init() {
 // ("duplicate key value violates unique constraint").
 const COLAS = {};
 
+// Escribe UNA fila, sin tocar las demas.
+//
+// Antes cada cambio (aprobar una cotizacion, editar un usuario) llamaba a
+// replaceAll, que reescribia la tabla COMPLETA fila por fila dentro de una
+// transaccion. Con 400 cotizaciones, aprobar una sola reescribia las 400: cada
+// estado de una cita tardaba segundos y multiplicaba el trafico a la base.
+async function upsert(table, key, valor) {
+  const previo = COLAS[table] || Promise.resolve();
+  COLAS[table] = previo.catch(() => {}).then(() => ejecutarUpsert(table, key, valor));
+  return COLAS[table];
+}
+
+async function ejecutarUpsert(table, key, valor) {
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    if (table === 'kv_sessions') {
+      await client.query(
+        `INSERT INTO ${table} (key, email, expires_at, data) VALUES ($1,$2,$3,$4)
+         ON CONFLICT (key) DO UPDATE SET email=EXCLUDED.email, expires_at=EXCLUDED.expires_at, data=EXCLUDED.data`,
+        [key, String((valor && valor.email) || ''), Number((valor && valor.expiresAt) || 0), valor || {}]
+      );
+    } else {
+      await client.query(
+        `INSERT INTO ${table} (key, data) VALUES ($1,$2)
+         ON CONFLICT (key) DO UPDATE SET data=EXCLUDED.data`,
+        [key, valor === undefined ? null : valor]
+      );
+    }
+  } finally {
+    client.release();
+  }
+}
+
+// Borra una sola fila (para las bajas).
+async function borrar(table, key) {
+  const previo = COLAS[table] || Promise.resolve();
+  COLAS[table] = previo.catch(() => {}).then(async () => {
+    const p = getPool();
+    const client = await p.connect();
+    try {
+      await client.query(`DELETE FROM ${table} WHERE key = $1`, [key]);
+    } finally {
+      client.release();
+    }
+  });
+  return COLAS[table];
+}
+
 async function replaceAll(table, obj) {
   const previo = COLAS[table] || Promise.resolve();
   COLAS[table] = previo.catch(() => {}).then(() => ejecutarReplace(table, obj));
@@ -140,4 +189,4 @@ function wt(promise) {
   Promise.resolve(promise).catch((e) => console.log('Aviso PG write: ' + e.message));
 }
 
-module.exports = { isEnabled, init, replaceAll, loadAllState, wt, getPool };
+module.exports = { isEnabled, init, replaceAll, upsert, borrar, loadAllState, wt, getPool };
