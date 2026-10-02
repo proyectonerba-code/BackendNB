@@ -645,14 +645,19 @@ function matchesSearch(value, query) {
   if (hay.includes(needle) || compactHay.includes(compactSearch(needle))) return true;
   return needle.split(/\s+/).filter(Boolean).every((token) => hay.includes(token) || compactHay.includes(compactSearch(token)));
 }
-const MAX_BODY_BYTES = 3 * 1024 * 1024; // 3MB: suficiente para fotos comprimidas, frena DoS
-// Topes de las fotos que adjunta el cliente a una solicitud de cotización.
-// Tres fotos es lo acordado. El límite de 650 KB por foto y 2 MB en total deja
-// holgura dentro del límite de 3 MB del request, para que la solicitud no se
-// rechace a medio enviar por fotos de celular sin comprimir.
-const MAX_FOTOS_COTIZACION = 5;
-const MAX_BYTES_FOTO_COTIZACION = 900 * 1024;
-const MAX_BYTES_TOTAL_FOTOS = 2600 * 1024;
+// 16MB: un Proyecto Especial manda legitimamente hasta 20 fotos ya comprimidas
+// en el navegador (1200 px / JPEG 0.72 ≈ 150-250 KB cada una, ~4 MB). Antes
+// el tope era 3 MB y una docena de fotos reventaba el request con un 413 a
+// medio enviar, que es lo que el cliente veía como "no deja subir".
+const MAX_BODY_BYTES = 16 * 1024 * 1024;
+// Topes de las fotos que adjunta el cliente a una solicitud.
+// 20 fotos es lo que el cotizador ofrece en Proyecto Especial y 5 en el resto,
+// asi que el servidor tiene que aguantar el caso mayor: se sube el conteo a 20
+// y el peso por foto a 500 KB (el front ya las achica antes de mandarlas), con
+// 10 MB de tope total para que un cliente no pueda inflar la cotizacion.
+const MAX_FOTOS_COTIZACION = 20;
+const MAX_BYTES_FOTO_COTIZACION = 650 * 1024;
+const MAX_BYTES_TOTAL_FOTOS = 10 * 1024 * 1024;
 function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -1806,10 +1811,10 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
   }
   // Fotos de la solicitud de cotización. Solo se acepta data URL de imagen y
   // se acota el número y el tamaño: si no, un cliente podría mandar archivos
-  // enormes y reventar el límite del request o inflar cotizaciones.json.
-  // Tres fotos es lo que se pidió. El cuerpo del request entero está limitado a
-  // 3 MB, así que además de contar se suma el peso: mejor fewer fotos que
-  // devolver un error raro de "request too large" en pleno envío.
+  // enormes y reventar el límite del request o inflar la cotización guardada.
+  // Además de contar se suma el peso, porque el request entero tiene tope: es
+  // preferible guardar algunas fotos a devolver un error raro de "payload too
+  // large" en pleno envío.
   function sanitizaFotos(lista) {
     if (!Array.isArray(lista)) return [];
     const salida = [];

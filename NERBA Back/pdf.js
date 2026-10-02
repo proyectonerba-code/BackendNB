@@ -113,20 +113,10 @@ function generar(c) {
         y = caja(doc, y, W, notas) + 12;
       }
 
-      // Fotos (max 3, tira)
-      const fotos = (Array.isArray(c.fotos) ? c.fotos : []).filter((s) => typeof s === 'string' && s.indexOf('data:image/') === 0).slice(0, 3);
-      if (fotos.length) {
-        y = seccion(doc, y, W, 'Fotografías del inmueble');
-        if (y > 640) { doc.addPage(); y = 60; }
-        const fw = (W - 14) / 3;
-        fotos.forEach((s, i) => {
-          try {
-            const b64 = s.slice(s.indexOf(',') + 1);
-            doc.image(Buffer.from(b64, 'base64'), 45 + i * (fw + 7), y, { fit: [fw, 85] });
-          } catch (e) { /* foto corrupta: se omite sin romper el documento */ }
-        });
-        y += 95;
-      }
+      // Fotos: TODAS las que subió el cliente, en rejilla de 3 por fila y con
+      // salto de página automático. Antes se cortaban a 3 (slice) y las fotos
+      // 4..20 no aparecían en ningún PDF del sistema.
+      y = bloqueFotos(doc, y, W, c.fotos);
 
       // Pie
       piePagina(doc, W, 'Documento generado por Grupo NERBA HIDALGO. No válido para efectos fiscales.   ' +
@@ -167,19 +157,9 @@ function generarMant(m) {
       y = seccion(doc, y, W, 'Motivo de la solicitud');
       y = caja(doc, y, W, txt(m.descripcion) || '—') + 12;
 
-      const fotos = (Array.isArray(m.fotos) ? m.fotos : []).filter((s) => typeof s === 'string' && s.indexOf('data:image/') === 0).slice(0, 3);
-      if (fotos.length) {
-        y = seccion(doc, y, W, 'Fotografías del inmueble');
-        if (y > 640) { doc.addPage(); y = 60; }
-        const fw = (W - 14) / 3;
-        fotos.forEach((s, i) => {
-          try {
-            const b64 = s.slice(s.indexOf(',') + 1);
-            doc.image(Buffer.from(b64, 'base64'), 45 + i * (fw + 7), y, { fit: [fw, 85] });
-          } catch (e) { /* foto corrupta: se omite */ }
-        });
-        y += 95;
-      }
+      // Fotos del cliente: todas, en rejilla paginada (mismo bloque que la
+      // cotización, antes se cortaban a 3 y el resto no salía en la ficha).
+      y = bloqueFotos(doc, y, W, m.fotos);
 
       piePagina(doc, W, 'Documento generado por Grupo NERBA HIDALGO. No válido para efectos fiscales.   ' +
         txt(m.id) + ' · ' + fechaCorta(m.fecha));
@@ -187,6 +167,53 @@ function generarMant(m) {
       doc.end();
     } catch (e) { reject(e); }
   });
+}
+
+/* Rejilla de fotografías del cliente: 3 por fila, alto fijo para que se vean
+ * parecidas, numeradas ("Foto 1 de 20") y con salto de página automático.
+ * Se dibujan TODAS las que se guardaron, no solo las primeras: en Proyecto
+ * Especial el cotizador deja subir hasta 20 y todas tienen que quedar
+ * asentadas en el documento, que es lo que el cliente se lleva y lo que
+ * usa ingeniería para dimensionar. */
+function bloqueFotos(doc, y, W, lista) {
+  const fotos = (Array.isArray(lista) ? lista : [])
+    .filter((s) => typeof s === 'string' && s.indexOf('data:image/') === 0);
+  if (!fotos.length) return y;
+
+  const COLS = 3, GAP = 7, ALTO = 85, ETIQUETA = 13;
+  const fw = (W - GAP * (COLS - 1)) / COLS;
+  const altoFila = ALTO + ETIQUETA;
+
+  let tituloImpreso = false;
+  let yFila = y;
+
+  const asegurarEspacio = () => {
+    if (yFila + altoFila > 730) { doc.addPage(); yFila = 60; }
+  };
+
+  fotos.forEach((s, i) => {
+    if (!tituloImpreso) {
+      yFila = seccion(doc, yFila, W, 'Fotografías del inmueble (' + fotos.length + ')');
+      tituloImpreso = true;
+    }
+    // La posicion en la rejilla se saca del indice, no de un contador de
+    // "dibujadas": si una foto llega corrupta y se omite, el hueco se queda
+    // vacio en su lugar y las siguientes no se encima.
+    const col = i % COLS;
+    if (col === 0) {
+      if (i > 0) yFila += altoFila + GAP;
+      asegurarEspacio();
+    }
+    const x = 45 + col * (fw + GAP);
+    try {
+      const b64 = s.slice(s.indexOf(',') + 1);
+      doc.image(Buffer.from(b64, 'base64'), x, yFila, { fit: [fw, ALTO], align: 'center', valign: 'center' });
+    } catch (e) { /* foto corrupta: se omite sin romper el documento */ }
+    doc.fillColor('#94a3b8').fontSize(7).font('Helvetica')
+      .text('Foto ' + (i + 1) + ' de ' + fotos.length, x, yFila + ALTO + 2, { width: fw, align: 'center' });
+  });
+
+  return yFila + altoFila;
 }
 
 function tarjeta(doc, x, y, w, titulo, pares) {
