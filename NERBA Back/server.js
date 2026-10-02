@@ -1507,6 +1507,14 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
     if (!u || !quoteScope(u, c) || (!isStaff(u) && !puedePE && !esDueno)) {
       return sendJSON(res, 403, { error: 'No tienes permiso para eliminar esta cotizacion' });
     }
+    // Proyecto especial aprobado: ya hay staff asignado y fases en curso, asi
+    // que el cliente ya no puede eliminarla por su cuenta. Si la necesita dada
+    // de baja, que lo pida al personal, que si puede. El personal siempre puede.
+    const esEspecial = c.area === 'PROYECTOS_ESPECIALES' || c.tipoInmueble === 'Proyecto Especial';
+    const aprobada = String(c.estado || '').toUpperCase() === 'APROBADA';
+    if (esDueno && esEspecial && aprobada) {
+      return sendJSON(res, 403, { error: 'Este proyecto especial ya fue aprobado, por eso ya no se puede eliminar. Si necesitas darlo de baja, avisale a Grupo NERBA HIDALGO.' });
+    }
     if (u.rol === 'SUPERADMIN' && body.ambito === 'todos') {
       delete quotes[mDel[1]];
       persistQuotes();
