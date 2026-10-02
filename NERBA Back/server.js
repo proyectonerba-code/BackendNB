@@ -341,7 +341,10 @@ function persistQuotes(folio) {
 function borrarQuoteEnDb(folio) {
   delete quotes[folio];
   if (DB_MODE) db.wt(db.borrar('kv_quotes', folio));
-  persistQuotes();
+  // Solo el respaldo local. OJO: no llamar a persistQuotes() aqui: sin folio
+  // reescribiria la tabla completa en Postgres, que es justo lo que evita el
+  // borrado por fila.
+  guardarJSONDespues(quotesFile, Object.values(quotes));
 }
 
 // ---------- bitacora de auditoria (solo SUPERADMIN la consulta) ----------
@@ -1400,7 +1403,9 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
       validez: fechaLocal(new Date(Date.now() + 15 * 864e5)),
     };
     quotes[folio] = c;
-    persistQuotes();
+    // Solo se escribe ESTA cotizacion (upsert por fila). Sin folio caeria al
+    // reescritura completa de la tabla, que es lo que se evita.
+    persistQuotes(folio);
     logAudit(req, { modulo: 'cotizaciones', evento: 'alta', detalle: (c.producto || '') + ' para ' + u.email, folio });
     // Confirmacion por correo al cliente. No bloquea ni falla la respuesta:
     // si no hay proveedor de correo o falla el envio, solo queda en el log.
@@ -1620,7 +1625,7 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
     const anterior = c.estado;
     c.estado = estado;
     if (anterior !== estado) recordQuoteState(c, u, anterior, estado);
-    persistQuotes();
+    persistQuotes(c.folio);
     logAudit(req, { modulo: 'cotizaciones', evento: 'cambio-estado', detalle: estado, folio: c.folio });
     return sendJSON(res, 200, quoteForUser(c, u));
   }
@@ -1648,7 +1653,7 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
     if (body.entregado !== undefined) c.entregado = !!body.entregado;
     if (body.enRevision !== undefined) c.enRevision = !!body.enRevision;
     if (body.notas !== undefined) c.notas = String(body.notas).slice(0, 1000);
-    persistQuotes();
+    persistQuotes(c.folio);
     logAudit(req, { modulo: 'proyectos', evento: 'avance', detalle: 'fases/avance de ' + c.folio, folio: c.folio });
     return sendJSON(res, 200, c);
   }
@@ -1683,8 +1688,7 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
       return sendJSON(res, 403, { error: 'Este proyecto especial ya fue aprobado, por eso ya no se puede eliminar. Si necesitas darlo de baja, avisale a Grupo NERBA HIDALGO.' });
     }
     if (u.rol === 'SUPERADMIN' && body.ambito === 'todos') {
-      delete quotes[mDel[1]];
-      persistQuotes();
+      borrarQuoteEnDb(mDel[1]);
       logAudit(req, { modulo: 'cotizaciones', evento: 'baja-definitiva', detalle: (c.producto || '') + ' de ' + (c.email || ''), folio: mDel[1] });
       return sendJSON(res, 200, { ok: true, ambito: 'todos' });
     }
@@ -1692,7 +1696,7 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
     const lado = esPersonal(u) ? 'staff' : 'cliente';
     if (c.oculta[lado]) return sendJSON(res, 200, { ok: true, ambito: lado, yaOculta: true });
     c.oculta[lado] = { por: u.email, nombre: u.nombre, rol: u.rol, fecha: new Date().toISOString() };
-    persistQuotes();
+    persistQuotes(c.folio);
     logAudit(req, {
       modulo: 'cotizaciones',
       evento: lado === 'staff' ? 'baja-panel' : 'baja-cliente',
@@ -1717,7 +1721,7 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
       delete c.oculta.cliente;
       if (!Object.keys(c.oculta).length) delete c.oculta;
     }
-    persistQuotes();
+    persistQuotes(c.folio);
     logAudit(req, { modulo: 'cotizaciones', evento: 'restauracion', detalle: 'Vuelta a verse en ambos paneles: ' + (c.producto || ''), folio: mRest[1] });
     return sendJSON(res, 200, quoteForUser(c, u));
   }
