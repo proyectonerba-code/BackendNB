@@ -653,10 +653,11 @@ const MAX_BODY_BYTES = 16 * 1024 * 1024;
 // Topes de las fotos que adjunta el cliente a una solicitud.
 // 20 fotos es lo que el cotizador ofrece en Proyecto Especial y 5 en el resto,
 // asi que el servidor tiene que aguantar el caso mayor: se sube el conteo a 20
-// y el peso por foto a 500 KB (el front ya las achica antes de mandarlas), con
-// 10 MB de tope total para que un cliente no pueda inflar la cotizacion.
+// y el peso por foto a 1.2 MB (el front ya las achica a 1000-1200 px, así que
+// una foto real pesa 100-250 KB; el tope es solo para una que llegue sin
+// comprimir). El tope que de verdad protege es el total: 10 MB.
 const MAX_FOTOS_COTIZACION = 20;
-const MAX_BYTES_FOTO_COTIZACION = 650 * 1024;
+const MAX_BYTES_FOTO_COTIZACION = 1200 * 1024;
 const MAX_BYTES_TOTAL_FOTOS = 10 * 1024 * 1024;
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -1203,6 +1204,9 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
   // serie que decide el folio, para que las dos cosas no se contradigan.
   if (area === 'GENERAL' && serie !== 'GENERAL') area = serie;
   const folio = folioSiguiente(serie, year);
+  // Se validan las fotos antes de armar el registro para poder reportar
+  // cuantas entraron y cuantas quedaron guardadas.
+  const saneadas = sanitizaFotos(body.fotos);
     const c = {
       folio,
       fecha: fechaLocal(),
@@ -1224,9 +1228,15 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
       descripcion: String(body.descripcion || ''),
       notas: String(body.notas || '').slice(0, 2000),
       // Fotos que el cliente adjuntó a la solicitud. El navegador ya las achica
-      // antes de mandarlas (1200 px, JPEG 0.75), así que acá solo se valida que
-      // sean imágenes de verdad y que no vengan más de las permitidas.
-      fotos: sanitizaFotos(body.fotos),
+      // antes de mandarlas (1200 px / JPEG 0.72, y 1000 px / 0.62 de la 6a en
+      // adelante), así que acá solo se valida que sean imágenes de verdad y que
+      // no vengan más de las permitidas.
+      fotos: saneadas.lista,
+      // Si alguna no se pudo guardar, el cliente lo tiene que saber: se
+      // devuelve el conteo para que la pantalla avise en vez de prometer 20
+      // fotos y entregar 13 sin decir nada.
+      fotosRecibidas: saneadas.recibidas,
+      fotosGuardadas: saneadas.guardadas,
       // Artículos sueltos de la cotización: permiten imprimirlos en tabla.
       items: (Array.isArray(body.items) ? body.items : []).slice(0, 80).map((it) => ({
         title: String((it && it.title) || '').trim().slice(0, 200),
@@ -1815,8 +1825,12 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
   // Además de contar se suma el peso, porque el request entero tiene tope: es
   // preferible guardar algunas fotos a devolver un error raro de "payload too
   // large" en pleno envío.
+  // Devuelve tambien cuántas entraron y cuántas quedaron, porque si se cae
+  // alguna el cliente tiene que enterarse: antes se descartaba en silencio y el
+  // PDF salía con menos fotos de las que el cliente subir, sin explicación.
   function sanitizaFotos(lista) {
-    if (!Array.isArray(lista)) return [];
+    if (!Array.isArray(lista)) return { lista: [], recibidas: 0, guardadas: 0 };
+    const recibidas = lista.length;
     const salida = [];
     let total = 0;
     for (const f of lista.slice(0, MAX_FOTOS_COTIZACION)) {
@@ -1829,7 +1843,7 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
       total += s.length;
       salida.push(s);
     }
-    return salida;
+    return { lista: salida, recibidas, guardadas: salida.length };
   }
   if (pathname === '/api/productos' && req.method === 'GET') {
     return sendJSON(res, 200, loadProductos());
