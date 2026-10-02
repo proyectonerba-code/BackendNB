@@ -2205,6 +2205,11 @@ async function start() {
         for (const q of Object.values(quotes)) {
           const m = /^COT-(\d+)-/.exec(q.folio || '');
           if (m && parseInt(m[1], 10) >= folioSeq) folioSeq = parseInt(m[1], 10) + 1;
+          // Tambien hay que retomar la cuenta de las series nuevas. Antes solo
+          // se(recuperaba la numerica vieja, asi que despues de cada redeploy
+          // la serie volvia a 0: la siguiente cita tomaba un folio ya usado y
+          // se cargaba encima de la cotizacion anterior sin avisar.
+          tomaFolioExistente(q.folio);
         }
       } else if (Object.keys(quotes).length) { db.wt(db.replaceAll('kv_quotes', quotes)); }
       if (s.productos.length) cProductos = s.productos;
