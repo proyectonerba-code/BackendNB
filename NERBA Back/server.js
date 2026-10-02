@@ -6,6 +6,13 @@
  *   node server.js [puerto]
  * O doble clic a run.bat
  */
+
+// Zona horaria. Railway corre en UTC, asi que sin esto el servidor guardaba las
+// horas en UTC y la bitacora se veía con 6 horas de diferencia (y hasta con el
+// dia equivocado) respecto a lo que marca el reloj del usuario en Hidalgo.
+// Se fija antes de usar Date para que TODO el backend razone en hora local.
+process.env.TZ = process.env.TZ || 'America/Mexico_City';
+
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
@@ -218,7 +225,7 @@ function seedUsers() {
   let changed = false;
   for (const d of demo) {
     if (!users[d.email]) {
-      users[d.email] = { nombre: d.nombre, email: d.email, passHash: hashPassword(d.password), rol: d.rol, activo: true, lastLogin: null, createdAt: new Date().toISOString().slice(0, 10) };
+      users[d.email] = { nombre: d.nombre, email: d.email, passHash: hashPassword(d.password), rol: d.rol, activo: true, lastLogin: null, createdAt: fechaLocal() };
       changed = true;
     } else {
       if (users[d.email].passHash === sha256(d.password)) {
@@ -458,6 +465,27 @@ function correoConfirmacionCotizacion(destino, nombre, c) {
   return enviarCorreo({ destino, nombre, asunto, html, texto });
 }
 
+
+// --- Hora local, sin mezclar zonas -----------------------------------------
+// Antes se usaba toISOString() para la fecha y toTimeString() para la hora.
+// toISOString() devuelve SIEMPRE UTC y toTimeString() la hora local del
+// servidor: las dos iban en el mismo registro y se contradecian. Despues de
+// las 18:00 la fecha ya era del dia siguiente con la hora del dia anterior.
+// Ahora las dos salen del mismo instante y en hora local.
+function dosDigitos(n) { return String(n).padStart(2, '0'); }
+function fechaLocal(d) {
+  d = d || new Date();
+  return d.getFullYear() + '-' + dosDigitos(d.getMonth() + 1) + '-' + dosDigitos(d.getDate());
+}
+function horaLocal(d) {
+  d = d || new Date();
+  return dosDigitos(d.getHours()) + ':' + dosDigitos(d.getMinutes()) + ':' + dosDigitos(d.getSeconds());
+}
+// Fecha y hora del mismo momento, para que no se contradigan.
+function ahoraLocal() {
+  const d = new Date();
+  return { fecha: fechaLocal(d), hora: horaLocal(d) };
+}
 function logAudit(req, info) {
   try {
     const a = loadAudit();
@@ -466,8 +494,8 @@ function logAudit(req, info) {
     const prev = a.lastHash || 'GENESIS';
     const e = {
       id: 'EVT-' + Date.now().toString(36).toUpperCase() + Math.floor(Math.random() * 1296).toString(36).toUpperCase(),
-      fecha: new Date().toISOString().slice(0, 10),
-      hora: new Date().toTimeString().slice(0, 8),
+      fecha: fechaLocal(),
+      hora: horaLocal(),
       modulo: String((info && info.modulo) || 'sistema'),
       evento: String((info && info.evento) || ''),
       detalle: String((info && info.detalle) || '').slice(0, 500),
@@ -835,7 +863,7 @@ async function manejar(req, res) {
     // publicUser lo devolvia vacio. Se guarda normalizado a solo digitos para que
     // el envio de SMS o WhatsApp no tenga que limpiarlo.
     const telefono = normalizaTelefono(body.telefono);
-    users[email] = { nombre, email, telefono, passHash: hashPassword(password), passPropia: true, rol: 'CLIENTE', activo: true, tema: 'light', lastLogin: null, createdAt: new Date().toISOString().slice(0, 10) };
+    users[email] = { nombre, email, telefono, passHash: hashPassword(password), passPropia: true, rol: 'CLIENTE', activo: true, tema: 'light', lastLogin: null, createdAt: fechaLocal() };
     persistUsers();
     logAudit(req, { modulo: 'accesos', evento: 'registro', detalle: nombre, usuario: email });
     const token = createSession(email);
@@ -969,7 +997,7 @@ if (pathname === '/api/login' && req.method === 'POST') {
       return sendJSON(res, 403, { error: 'Cuenta desactivada. Contacta al administrador.' });
     }
     if (!u.passHash.startsWith('scrypt$')) { u.passHash = hashPassword(body.password || ''); u.passPropia = true; persistUsers(); }
-    u.lastLogin = { fecha: new Date().toISOString().slice(0, 10), hora: new Date().toTimeString().slice(0, 8), ip: clientIp(req) };
+    u.lastLogin = { fecha: fechaLocal(), hora: horaLocal(), ip: clientIp(req) };
     persistUsers();
     const token = createSession(email);
     logAudit(req, { modulo: 'accesos', evento: 'login', detalle: u.nombre + ' (' + u.rol + ')' });
@@ -990,7 +1018,7 @@ if (pathname === '/api/login' && req.method === 'POST') {
     let esNuevo = false;
     if (!u) {
       const randomPassword = crypto.randomBytes(24).toString('hex');
-      u = users[profile.email] = { nombre: profile.nombre, email: profile.email, passHash: hashPassword(randomPassword), googleSub: profile.sub, authProvider: 'google', rol: 'CLIENTE', activo: true, tema: 'light', lastLogin: null, createdAt: new Date().toISOString().slice(0, 10) };
+      u = users[profile.email] = { nombre: profile.nombre, email: profile.email, passHash: hashPassword(randomPassword), googleSub: profile.sub, authProvider: 'google', rol: 'CLIENTE', activo: true, tema: 'light', lastLogin: null, createdAt: fechaLocal() };
       persistUsers();
       esNuevo = true;
       logAudit(req, { modulo: 'accesos', evento: 'registro', detalle: profile.nombre + ' (Google)', usuario: profile.email });
@@ -998,7 +1026,7 @@ if (pathname === '/api/login' && req.method === 'POST') {
       u.googleSub = profile.sub;
       u.authProvider = u.authProvider || 'google';
     }
-    u.lastLogin = { fecha: new Date().toISOString().slice(0, 10), hora: new Date().toTimeString().slice(0, 8), ip: clientIp(req) };
+    u.lastLogin = { fecha: fechaLocal(), hora: horaLocal(), ip: clientIp(req) };
     persistUsers();
     const token = createSession(profile.email);
     logAudit(req, { modulo: 'accesos', evento: esNuevo ? 'registro' : 'login', detalle: u.nombre + ' (' + u.rol + ', Google)' });
@@ -1149,7 +1177,7 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
   const folio = folioSiguiente(serie, year);
     const c = {
       folio,
-      fecha: new Date().toISOString().slice(0, 10),
+      fecha: fechaLocal(),
       email: u.email, nombre: u.nombre,
       telefono: String(body.telefono || u.telefono || ''),
       telefonoSec: String(body.telefonoSec || ''),
@@ -1179,7 +1207,7 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
       })).filter((it) => it.title),
       subtotal: base, instalacion, iva, total: base + instalacion + iva,
       estado: 'PENDIENTE',
-      validez: new Date(Date.now() + 15 * 864e5).toISOString().slice(0, 10),
+      validez: fechaLocal(new Date(Date.now() + 15 * 864e5)),
     };
     quotes[folio] = c;
     persistQuotes();
@@ -1289,7 +1317,7 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
       empresa: String(body.empresa || '').trim().slice(0, 160),
       passHash: hashPassword(password), passPropia: true, rol,
       activo: body.activo === undefined ? true : !!body.activo,
-      lastLogin: null, createdAt: new Date().toISOString().slice(0, 10),
+      lastLogin: null, createdAt: fechaLocal(),
     };
     persistUsers();
     logAudit(req, { modulo: 'usuarios', evento: 'alta', detalle: nombre + ' (' + rol + ')', usuario: email });
@@ -1476,7 +1504,7 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
     const lista = loadContacto();
     const m = {
       id: 'MSG-' + Date.now().toString(36).toUpperCase(),
-      fecha: new Date().toISOString().slice(0, 10),
+      fecha: fechaLocal(),
       nombre, email,
       telefono: String(body.telefono || '').trim(),
       asunto: String(body.asunto || 'Consulta general').trim(),
@@ -1946,7 +1974,7 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
     const m = {
       id: 'MNT-' + String(n).padStart(4, '0') + '-' + new Date().getFullYear(),
       folio: String(body.folio || '').trim(),
-      fecha: new Date().toISOString().slice(0, 10),
+      fecha: fechaLocal(),
       email: u.email, nombre: u.nombre,
       telefono: String(body.telefono || u.telefono || '').trim(),
       direccion: String(body.direccion || u.direccion || '').trim(),
