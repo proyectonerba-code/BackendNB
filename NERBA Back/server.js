@@ -835,7 +835,7 @@ async function manejar(req, res) {
     // publicUser lo devolvia vacio. Se guarda normalizado a solo digitos para que
     // el envio de SMS o WhatsApp no tenga que limpiarlo.
     const telefono = normalizaTelefono(body.telefono);
-    users[email] = { nombre, email, telefono, passHash: hashPassword(password), rol: 'CLIENTE', activo: true, tema: 'light', lastLogin: null, createdAt: new Date().toISOString().slice(0, 10) };
+    users[email] = { nombre, email, telefono, passHash: hashPassword(password), passPropia: true, rol: 'CLIENTE', activo: true, tema: 'light', lastLogin: null, createdAt: new Date().toISOString().slice(0, 10) };
     persistUsers();
     logAudit(req, { modulo: 'accesos', evento: 'registro', detalle: nombre, usuario: email });
     const token = createSession(email);
@@ -906,7 +906,7 @@ if (pathname === '/api/restablecer' && req.method === 'POST') {
   if (nueva.length < 6) return sendJSON(res, 400, { error: 'La contrasena debe tener al menos 6 caracteres' }, req);
   const u = users[r.email];
   if (!u) { delete resets[hash]; persistResets(); return sendJSON(res, 404, { error: 'La cuenta ya no existe' }, req); }
-  u.passHash = hashPassword(nueva);
+  u.passHash = hashPassword(nueva); u.passPropia = true;
   // El token se quema y se cierra el resto de sesiones abiertas de esa cuenta.
   delete resets[hash]; persistResets();
   Object.keys(sessions).forEach(function (k) { if (sessions[k] && sessions[k].email === r.email) delete sessions[k]; });
@@ -968,7 +968,7 @@ if (pathname === '/api/login' && req.method === 'POST') {
       logAudit(req, { modulo: 'accesos', evento: 'login-bloqueado', detalle: email, usuario: email });
       return sendJSON(res, 403, { error: 'Cuenta desactivada. Contacta al administrador.' });
     }
-    if (!u.passHash.startsWith('scrypt$')) { u.passHash = hashPassword(body.password || ''); persistUsers(); }
+    if (!u.passHash.startsWith('scrypt$')) { u.passHash = hashPassword(body.password || ''); u.passPropia = true; persistUsers(); }
     u.lastLogin = { fecha: new Date().toISOString().slice(0, 10), hora: new Date().toTimeString().slice(0, 8), ip: clientIp(req) };
     persistUsers();
     const token = createSession(email);
@@ -1036,6 +1036,62 @@ if (pathname === '/api/login' && req.method === 'POST') {
       }
       persistUsers();
       return sendJSON(res, 200, publicUser(u));
+    }
+    if (req.method === 'DELETE') {
+      // Borrado total de la cuenta propia: usuario, sesiones, cotizaciones,
+      // mantenimientos y tokens de recuperacion. La bitacora conserva el
+      // registro anonimizado (trazabilidad del sistema).
+      // Cuentas con contrasena propia la confirman; las creadas solo con
+      // Google (sin contrasena conocida) confirman escribiendo su correo.
+      const email = String(u.email || '').toLowerCase();
+      if (u.passPropia) {
+        if (!verifyPassword(body.currentPassword || '', u.passHash)) {
+          return sendJSON(res, 401, { error: 'Confirma tu contraseña actual para eliminar la cuenta.' }, req);
+        }
+      } else {
+        if (String(body.email || '').trim().toLowerCase() !== email || !email) {
+          return sendJSON(res, 401, { error: 'Escribe tu correo para confirmar la eliminación.' }, req);
+        }
+      }
+      if (u.rol === 'SUPERADMIN' && !Object.values(users).some((x) => x.rol === 'SUPERADMIN' && String(x.email || '').toLowerCase() !== email)) {
+        return sendJSON(res, 400, { error: 'No puedes eliminar al último SUPERADMIN.' }, req);
+      }
+      delete users[email];
+      for (const t of Object.keys(sessions)) {
+        if (sessions[t] && String(sessions[t].email || '').toLowerCase() === email) delete sessions[t];
+      }
+      for (const f of Object.keys(quotes)) {
+        if (quotes[f] && String(quotes[f].email || '').toLowerCase() === email) delete quotes[f];
+      }
+      try {
+        // (autocontenido: loadMant/persistMant se declaran mas abajo en el handler)
+        const mf = path.join(DATA_DIR, 'mantenimiento.json');
+        let lista = [];
+        try { if (fs.existsSync(mf)) lista = JSON.parse(fs.readFileSync(mf, 'utf8')) || []; } catch (e) {}
+        const filtrada = lista.filter((m) => String(m.email || '').toLowerCase() !== email);
+        if (filtrada.length !== lista.length) {
+          saveJSON(mf, filtrada);
+          if (DB_MODE) {
+            cMant = filtrada;
+            const byId = {};
+            for (const mm of filtrada) byId[mm.id] = mm;
+            db.wt(db.replaceAll('kv_mantenimiento', byId));
+          }
+        }
+      } catch (e) {}
+      try {
+        const rs = loadRecup();
+        let cambio = false;
+        for (const k of Object.keys(rs)) {
+          if (String((rs[k] || {}).email || '').toLowerCase() === email) { delete rs[k]; cambio = true; }
+        }
+        if (cambio) persistRecup(rs);
+      } catch (e) {}
+      persistUsers();
+      persistSessions();
+      persistQuotes();
+      logAudit(req, { modulo: 'usuarios', evento: 'baja-propia', detalle: u.nombre + ' (' + u.rol + ')', usuario: email });
+      return sendJSON(res, 200, { ok: true });
     }
     return sendJSON(res, 405, { error: 'Metodo no permitido' });
   }
@@ -1231,7 +1287,7 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
       telefono: normalizaTelefono(body.telefono),
       direccion: String(body.direccion || '').trim().slice(0, 240),
       empresa: String(body.empresa || '').trim().slice(0, 160),
-      passHash: hashPassword(password), rol,
+      passHash: hashPassword(password), passPropia: true, rol,
       activo: body.activo === undefined ? true : !!body.activo,
       lastLogin: null, createdAt: new Date().toISOString().slice(0, 10),
     };
@@ -1268,7 +1324,7 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
     }
     if (body.newPassword) {
       if (String(body.newPassword).length < 6) return sendJSON(res, 400, { error: 'La nueva contrasena debe tener al menos 6 caracteres' });
-      target.passHash = hashPassword(body.newPassword);
+      target.passHash = hashPassword(body.newPassword); target.passPropia = true;
       logAudit(req, { modulo: 'usuarios', evento: 'cambio-password', detalle: target.nombre, usuario: email });
     }
     persistUsers();
