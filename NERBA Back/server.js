@@ -341,7 +341,191 @@ function persistQuotes(folio) {
 function borrarQuoteEnDb(folio) {
   delete quotes[folio];
   if (DB_MODE) db.wt(db.borrar('kv_quotes', folio));
+  db.wt(borrarFotosArchivadas(folio));
   persistQuotes();
+}
+
+// ---------- archivo de fotos: los bytes salen de la memoria ----------
+// Las fotos son ~99.9% del peso de una cotizacion (1,000 citas con 5 fotos son
+// 916 MB, y sin fotos son 0.6 MB). Archivar NO borra nada: la cotizacion sigue
+// igual de visible en la tabla, el historial, las busquedas y los Excel; unico
+// cambio es que los bytes de las imagenes se mueven a una tabla aparte, fuera de
+// la memoria del proceso. Cuando hacen falta (PDF, galeria, ZIP) se vuelven a
+// pedir por folio.
+//
+// Por que esto NO puede repetir un folio: la numeracion se retoma con las
+// cotizaciones que estan cargadas (tomaFolioExistente) y archivar nunca borra la
+// fila de la tabla de cotizaciones, solo le saca las imagenes. El folio sigue
+// ahi, asi que el siguiente numero continua igual.
+const archivoFotosFile = path.join(DATA_DIR, 'fotos-archivo.json');
+let cFotosArchivo = null;
+function archivoLocal() {
+  if (cFotosArchivo) return cFotosArchivo;
+  cFotosArchivo = {};
+  try { if (fs.existsSync(archivoFotosFile)) Object.assign(cFotosArchivo, loadJSON(archivoFotosFile, {})); } catch {}
+  return cFotosArchivo;
+}
+// Fecha de la cotizacion para decidir que es "viejo". Viene como YYYY-MM-DD en
+// hora local; si no esta, se usa la actual para no dejar nada fuera por error.
+function fechaDeCotizacion(c) {
+  const s = String((c && c.fecha) || '').slice(0, 10);
+  const t = /^\d{4}-\d{2}-\d{2}$/.test(s) ? Date.parse(s + 'T12:00:00') : NaN;
+  return Number.isFinite(t) ? t : Date.now();
+}
+function metaArchivo(c, fotos) {
+  return {
+    folio: c.folio,
+    n: fotos.length,
+    // Las fotos vienen en base64: ~4/3 del peso real.
+    kb: Math.round((fotos.reduce(function (a, f) { return a + String(f || '').length; }, 0) * 0.75) / 1024),
+    fecha: c.fecha || '',
+    cliente: c.nombre || '',
+    email: c.email || '',
+    producto: c.producto || '',
+    archivada: new Date().toISOString(),
+  };
+}
+async function metaFotosArchivadas(folio) {
+  if (DB_MODE) return (await db.get('kv_fotos_archivo', folio)) || null;
+  const e = archivoLocal()[folio];
+  if (!e) return null;
+  const copia = { ...e };
+  delete copia.fotos;
+  return copia;
+}
+async function binFotosArchivadas(folio) {
+  if (DB_MODE) return (await db.get('kv_fotos_bin', folio)) || null;
+  const e = archivoLocal()[folio];
+  return e && Array.isArray(e.fotos) ? e.fotos : null;
+}
+async function guardarFotosArchivadas(folio, meta, fotos) {
+  if (DB_MODE) {
+    await db.upsert('kv_fotos_bin', folio, { folio: folio, fotos: fotos });
+    await db.upsert('kv_fotos_archivo', folio, meta);
+    return;
+  }
+  const a = archivoLocal();
+  a[folio] = { ...meta, fotos: fotos };
+  guardarJSONDespues(archivoFotosFile, a);
+}
+async function borrarFotosArchivadas(folio) {
+  if (!folio) return;
+  if (DB_MODE) {
+    await db.borrar('kv_fotos_bin', folio);
+    await db.borrar('kv_fotos_archivo', folio);
+    return;
+  }
+  const a = archivoLocal();
+  if (a[folio]) { delete a[folio]; guardarJSONDespues(archivoFotosFile, a); }
+}
+// Indice del archivo (sin imagenes): por eso el listado es liviano.
+async function listarFotosArchivadas() {
+  if (DB_MODE) return Object.values(await db.loadAll('kv_fotos_archivo'));
+  return Object.values(archivoLocal()).map(function (e) {
+    const copia = { ...e };
+    delete copia.fotos;
+    return copia;
+  });
+}
+// Para armar un documento: si la cotizacion no tiene fotos a mano pero las tiene
+// archivadas, se las poner encima. El PDF sale igual que antes de archivar.
+async function fotosParaDocumento(c) {
+  if (Array.isArray(c.fotos) && c.fotos.length) return c;
+  if (!c.fotosArchivadas) return c;
+  const fotos = await binFotosArchivadas(c.folio);
+  return fotos && fotos.length ? { ...c, fotos: fotos } : c;
+}
+
+// ---------- ZIP del archivo (respaldo para el disco del usuario) ----------
+// Se escribe POR TROZOS: si el archivo tiene 4 GB, armar el ZIP en memoria
+// mataria el servidor. Solo se guarda en memoria el indice central (unos 60
+// bytes por foto), que es lo unico que hace falta para el final del archivo.
+const TABLA_CRC = (function () {
+  const t = new Int32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c;
+  }
+  return t;
+})();
+function crc32Buffer(buf) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < buf.length; i++) c = TABLA_CRC[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function fotoAPng(f) {
+  const s = String(f || '');
+  if (/^data:image\/png/i.test(s)) return 'png';
+  if (/^data:image\/(webp|gif)/i.test(s)) return 'jpg';
+  return 'jpg';
+}
+function bytesDeFoto(f) {
+  const s = String(f || '');
+  const b64 = s.indexOf(',') >= 0 ? s.slice(s.indexOf(',') + 1) : s;
+  try { return Buffer.from(b64, 'base64'); } catch { return Buffer.alloc(0); }
+}
+const esperarDrain = (res) => new Promise(function (r) { res.once('drain', r); });
+// fuente: async function* que entrega { nombre, datos }
+async function enviarZip(req, res, fuente, nombreArchivo) {
+  const central = [];
+  let offset = 0;
+  const d = new Date();
+  const hora = ((d.getHours() & 31) << 11) | ((d.getMinutes() & 63) << 5) | ((d.getSeconds() / 2) & 31);
+  const fecha = (((d.getFullYear() - 1980) & 127) << 9) | (((d.getMonth() + 1) & 15) << 5) | (d.getDate() & 31);
+  res.writeHead(200, {
+    'Content-Type': 'application/zip',
+    'Content-Disposition': 'attachment; filename="' + nombreArchivo + '"',
+    'Cache-Control': 'no-store',
+    'Access-Control-Allow-Origin': corsOrigin(req),
+    'Vary': 'Origin',
+  });
+  for await (const a of fuente()) {
+    const nombre = Buffer.from(String(a.nombre), 'utf8');
+    const datos = Buffer.isBuffer(a.datos) ? a.datos : Buffer.from(String(a.datos), 'utf8');
+    const crc = crc32Buffer(datos);
+    const lh = Buffer.alloc(30 + nombre.length);
+    lh.writeUInt32LE(0x04034b50, 0);
+    lh.writeUInt16LE(20, 4);
+    lh.writeUInt16LE(0x0800, 6); // nombres en UTF-8
+    lh.writeUInt16LE(0, 8); // sin compresion: la foto ya viene comprimida
+    lh.writeUInt16LE(hora, 10);
+    lh.writeUInt16LE(fecha, 12);
+    lh.writeUInt32LE(crc, 14);
+    lh.writeUInt32LE(datos.length, 18);
+    lh.writeUInt32LE(datos.length, 22);
+    lh.writeUInt16LE(nombre.length, 26);
+    nombre.copy(lh, 30);
+
+    const cd = Buffer.alloc(46 + nombre.length);
+    cd.writeUInt32LE(0x02014b50, 0);
+    cd.writeUInt16LE(20, 4);
+    cd.writeUInt16LE(20, 6);
+    cd.writeUInt16LE(0x0800, 8);
+    cd.writeUInt16LE(0, 10);
+    cd.writeUInt16LE(hora, 12);
+    cd.writeUInt16LE(fecha, 14);
+    cd.writeUInt32LE(crc, 16);
+    cd.writeUInt32LE(datos.length, 20);
+    cd.writeUInt32LE(datos.length, 24);
+    cd.writeUInt16LE(nombre.length, 28);
+    cd.writeUInt32LE(offset, 42);
+    nombre.copy(cd, 46);
+    central.push(cd);
+    offset += lh.length + datos.length;
+
+    if (!res.write(lh)) await esperarDrain(res);
+    if (!res.write(datos)) await esperarDrain(res);
+  }
+  const cdBuf = Buffer.concat(central);
+  const fin = Buffer.alloc(22);
+  fin.writeUInt32LE(0x06054b50, 0);
+  fin.writeUInt16LE(central.length, 8);
+  fin.writeUInt16LE(central.length, 10);
+  fin.writeUInt32LE(cdBuf.length, 12);
+  fin.writeUInt32LE(offset, 16);
+  res.write(cdBuf);
+  res.end(fin);
 }
 
 // ---------- bitacora de auditoria (solo SUPERADMIN la consulta) ----------
@@ -908,7 +1092,10 @@ function quoteForUser(c, u, opciones) {
   out.ocultaCliente = ocultaCliente(c);
   if (!out.oculta && !out.ocultaStaff && !out.ocultaCliente) delete out.oculta;
   if (opciones && opciones.sinFotos) {
-    out.fotosN = Array.isArray(c.fotos) ? c.fotos.length : 0;
+    // Con las fotos archivadas la lista ya no trae imagenes, pero el numero
+    // sigue siendo el real: sale del archivo, no de 0.
+    out.fotosN = c.fotosArchivadas && c.fotosArchivadas.n ? Number(c.fotosArchivadas.n) || 0
+      : (Array.isArray(c.fotos) ? c.fotos.length : 0);
     delete out.fotos;
   }
   return out;
@@ -1435,7 +1622,9 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
     }
     let buf;
     try {
-      buf = await pdf.generar(c);
+      // Si las fotos estan en el archivo, se traen antes de armar el PDF: el
+      // documento sale con las imagenes igual que si nunca se hubieran movido.
+      buf = await pdf.generar(await fotosParaDocumento(c));
     } catch (e) {
       console.log('Aviso PDF ' + c.folio + ': ' + e.message);
       return sendJSON(res, 500, { error: 'No se pudo generar el documento.' }, req);
@@ -1461,6 +1650,117 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
     if (!quoteScope(u, c)) return sendJSON(res, 403, { error: 'No tienes permiso para consultar esta cotizacion' });
     if (!quoteVisible(c, u)) return sendJSON(res, 404, { error: 'No encontrada' });
     return sendJSON(res, 200, quoteForUser(c, u));
+  }
+
+  // ----- archivo de fotos (solo SUPERADMIN) -----
+  // Archivar NO borra la cotizacion: solo saca los bytes de las imagenes de la
+  // memoria y los deja en el archivo, donde se vuelven a pedir cuando hacen
+  // falta. La tabla, el historial, las busquedas y los Excel no cambian.
+  //
+  // Orden importante: la ruta del .zip va antes que la de :folio, porque
+  // "/api/archivo/fotos.zip" tambien cabria en el patron de un solo segmento.
+  if (pathname === '/api/archivo/fotos.zip' && req.method === 'GET') {
+    const u = userByToken(getToken(req));
+    if (!u || u.rol !== 'SUPERADMIN') return sendJSON(res, 403, { error: 'Solo el Super Admin puede bajar el archivo de fotos' }, req);
+    logAudit(req, { modulo: 'cotizaciones', evento: 'descarga-archivo-fotos', detalle: 'ZIP completo del archivo de fotos' });
+    return enviarZip(req, res, async function* () {
+      const lista = await listarFotosArchivadas();
+      yield { nombre: 'resumen.json', datos: Buffer.from(JSON.stringify(lista, null, 2), 'utf8') };
+      for (const meta of lista) {
+        const fotos = await binFotosArchivadas(meta.folio);
+        if (!fotos || !fotos.length) continue;
+        const base = String(meta.folio).replace(/[^A-Za-z0-9._-]+/g, '_');
+        for (let i = 0; i < fotos.length; i++) {
+          yield {
+            nombre: 'fotos/' + base + '-' + String(i + 1).padStart(2, '0') + '.' + fotoAPng(fotos[i]),
+            datos: bytesDeFoto(fotos[i]),
+          };
+        }
+      }
+    }, 'archivo-fotos-' + fechaLocal() + '.zip');
+  }
+
+  if (pathname === '/api/archivo/fotos' && req.method === 'GET') {
+    const u = userByToken(getToken(req));
+    if (!u || u.rol !== 'SUPERADMIN') return sendJSON(res, 403, { error: 'Solo el Super Admin puede ver el archivo de fotos' }, req);
+    const lista = await listarFotosArchivadas();
+    lista.sort((a, b) => String(a.archivada || '').localeCompare(String(b.archivada || '')));
+    return sendJSON(res, 200, lista, req);
+  }
+
+  if (pathname === '/api/archivo/fotos' && req.method === 'POST') {
+    const u = userByToken(getToken(req));
+    if (!u || u.rol !== 'SUPERADMIN') return sendJSON(res, 403, { error: 'Solo el Super Admin puede archivar fotos' }, req);
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const meses = Number.isFinite(Number(body.meses)) ? Math.max(0, Math.floor(Number(body.meses))) : 12;
+    const corte = meses > 0 ? Date.now() - meses * 30.4 * 864e5 : null;
+    const conFotos = [];
+    let movidas = 0, movidasN = 0, movidasKb = 0;
+    for (const c of Object.values(quotes)) {
+      if (!Array.isArray(c.fotos) || !c.fotos.length) continue;
+      conFotos.push({ folio: c.folio, kb: Math.round(c.fotos.reduce((a, f) => a + String(f || '').length, 0) * 0.75 / 1024) });
+      if (corte && fechaDeCotizacion(c) > corte) continue;
+      // Primero se guardan los bytes y despues se marca la cotizacion: si se
+      // cayera el servidor en medio, la foto sigue en el archivo y la
+      // cotizacion todavia la tiene (no se perdio nada).
+      const fotos = c.fotos;
+      const meta = metaArchivo(c, fotos);
+      await guardarFotosArchivadas(c.folio, meta, fotos);
+      c.fotos = [];
+      c.fotosN = fotos.length;
+      c.fotosArchivadas = { n: meta.n, kb: meta.kb, archivada: meta.archivada };
+      persistQuotes(c.folio);
+      movidas++;
+      movidasN += fotos.length;
+      movidasKb += meta.kb;
+    }
+    logAudit(req, {
+      modulo: 'cotizaciones',
+      evento: 'archivo-fotos',
+      detalle: movidas + ' cotizacion(es), ' + movidasN + ' fotos, ' + movidasKb + ' KB (meses: ' + meses + ')',
+    });
+    return sendJSON(res, 200, {
+      ok: true,
+      meses: meses,
+      movidas: movidas,
+      fotos: movidasN,
+      kb: movidasKb,
+      quedanConFotos: conFotos.length - movidas,
+      kbVivo: conFotos.reduce(function (a, x) { return a + x.kb; }, 0) - movidasKb,
+    }, req);
+  }
+
+  // Ver las fotos de una cotizacion archivada (mismos permisos que verla).
+  const mFotosArchivadas = /^\/api\/archivo\/fotos\/([^/]+)$/.exec(pathname);
+  if (mFotosArchivadas && req.method === 'GET') {
+    const u = userByToken(getToken(req));
+    if (!u) return sendJSON(res, 401, { error: 'Inicia sesion para ver las fotografias' }, req);
+    const c = quotes[mFotosArchivadas[1]];
+    if (!c) return sendJSON(res, 404, { error: 'No encontrada' }, req);
+    if (!quoteScope(u, c)) return sendJSON(res, 403, { error: 'No tienes permiso para ver estas fotografias' }, req);
+    if (!quoteVisible(c, u)) return sendJSON(res, 404, { error: 'No encontrada' }, req);
+    const fotos = await binFotosArchivadas(c.folio);
+    if (!fotos || !fotos.length) return sendJSON(res, 404, { error: 'Esta cotizacion no tiene fotos archivadas' }, req);
+    return sendJSON(res, 200, { folio: c.folio, fotos: fotos, archivada: c.fotosArchivadas || null }, req);
+  }
+
+  // Devolver las fotos de una cotizacion a su estado normal.
+  const mRestaurarFotos = /^\/api\/archivo\/fotos\/([^/]+)\/restaurar$/.exec(pathname);
+  if (mRestaurarFotos && req.method === 'POST') {
+    const u = userByToken(getToken(req));
+    if (!u || u.rol !== 'SUPERADMIN') return sendJSON(res, 403, { error: 'Solo el Super Admin puede restaurar fotos' }, req);
+    const c = quotes[mRestaurarFotos[1]];
+    if (!c) return sendJSON(res, 404, { error: 'No encontrada' }, req);
+    const fotos = await binFotosArchivadas(c.folio);
+    if (!fotos || !fotos.length) return sendJSON(res, 404, { error: 'Esta cotizacion no tiene fotos archivadas' }, req);
+    c.fotos = fotos;
+    c.fotosN = fotos.length;
+    delete c.fotosArchivadas;
+    persistQuotes(c.folio);
+    await borrarFotosArchivadas(c.folio);
+    logAudit(req, { modulo: 'cotizaciones', evento: 'restauracion-fotos', detalle: c.folio + ' (' + fotos.length + ' fotos)', folio: c.folio });
+    return sendJSON(res, 200, { ok: true, folio: c.folio, fotos: fotos.length }, req);
   }
 
   // ----- staff: resumen operativo -----
@@ -1684,6 +1984,10 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
     }
     if (u.rol === 'SUPERADMIN' && body.ambito === 'todos') {
       delete quotes[mDel[1]];
+      if (DB_MODE) db.wt(db.borrar('kv_quotes', mDel[1]));
+      // Si tenia fotos en el archivo, se van con ella: dejar el archivo con
+      // huerfanos solo ocuparia espacio.
+      db.wt(borrarFotosArchivadas(mDel[1]));
       persistQuotes();
       logAudit(req, { modulo: 'cotizaciones', evento: 'baja-definitiva', detalle: (c.producto || '') + ' de ' + (c.email || ''), folio: mDel[1] });
       return sendJSON(res, 200, { ok: true, ambito: 'todos' });

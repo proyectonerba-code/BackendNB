@@ -36,6 +36,20 @@ async function init() {
   await p.query(`CREATE TABLE IF NOT EXISTS kv_auditoria (key TEXT PRIMARY KEY, data JSONB NOT NULL)`);
   await p.query(`CREATE TABLE IF NOT EXISTS kv_recuperacion (key TEXT PRIMARY KEY, data JSONB NOT NULL)`);
   await p.query(`CREATE TABLE IF NOT EXISTS kv_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`);
+  // Archivo de fotos. Son DOS tablas a proposito: el indice guarda solo datos
+  // pequenos (folio, cuantas fotos, cuanto pesan) y los bytes viven aparte. Si
+  // estuvieran juntos, abrir la lista del archivo traeria todas las imagenes a
+  // memoria, que es justo lo que el archivo existe para evitar.
+  await p.query(`CREATE TABLE IF NOT EXISTS kv_fotos_archivo (key TEXT PRIMARY KEY, data JSONB NOT NULL)`);
+  await p.query(`CREATE TABLE IF NOT EXISTS kv_fotos_bin (key TEXT PRIMARY KEY, data JSONB NOT NULL)`);
+}
+
+// Lee UNA fila, bajo demanda. Las fotos archivadas NO se cargan al arrancar:
+// se piden solo cuando hacen falta (al armar un PDF, al verlas, al bajar el ZIP).
+async function get(table, key) {
+  const p = getPool();
+  const r = await p.query(`SELECT data FROM ${table} WHERE key = $1`, [key]);
+  return r.rows[0] ? r.rows[0].data : null;
 }
 
 // Un solo reemplazo por tabla a la vez. Sin esto, dos escrituras simultaneas
@@ -189,4 +203,4 @@ function wt(promise) {
   Promise.resolve(promise).catch((e) => console.log('Aviso PG write: ' + e.message));
 }
 
-module.exports = { isEnabled, init, replaceAll, upsert, borrar, loadAllState, wt, getPool };
+module.exports = { isEnabled, init, replaceAll, upsert, borrar, get, loadAll, loadAllState, wt, getPool };
