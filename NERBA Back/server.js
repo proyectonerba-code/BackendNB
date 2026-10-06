@@ -2307,8 +2307,49 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
     }
     return { lista: salida, recibidas, guardadas: salida.length };
   }
+  // Catalogo: la lista se puede pedir "liviana" (?lite=1), sin las fotos.
+  //
+  // /api/productos completo son 20.8 MB (262 productos, 636 fotos en base64) y
+  // tardaba 34 segundos: por eso el catalogo del inicio se quedaba esperando
+  // segundos antes de poder contar y dibujar las categorias. La lista liviana
+  // deja el numero de fotos y las quita; la foto se pide solo cuando la tarjeta
+  // ya esta en pantalla (/api/productos/portada) o al abrir el detalle.
+  function productoLite(p) {
+    const out = { ...p };
+    const n = Array.isArray(p.images) ? p.images.filter(Boolean).length : 0;
+    out.fotosN = n;
+    delete out.images;
+    return out;
+  }
   if (pathname === '/api/productos' && req.method === 'GET') {
-    return sendJSON(res, 200, loadProductos());
+    const lista = loadProductos();
+    if (url.searchParams.get('lite') === '1') {
+      return sendJSON(res, 200, lista.map(productoLite), req);
+    }
+    return sendJSON(res, 200, lista, req);
+  }
+  // Portadas de varios productos de una vez: la primera foto de cada uno, para
+  // las tarjetas que ya se ven. Va en grupos chico para no volver a mandar 20 MB.
+  if (pathname === '/api/productos/portada' && req.method === 'GET') {
+    const pedidos = String(url.searchParams.get('ids') || '').split(',').map((s) => s.trim()).filter(Boolean).slice(0, 40);
+    if (!pedidos.length) return sendJSON(res, 200, {}, req);
+    const mapa = {};
+    for (const p of loadProductos()) {
+      if (mapa[p.id]) continue;
+      const primera = Array.isArray(p.images) ? p.images.find(Boolean) : '';
+      if (primera) mapa[p.id] = primera;
+    }
+    const salida = {};
+    for (const id of pedidos) if (mapa[id]) salida[id] = mapa[id];
+    return sendJSON(res, 200, salida, req);
+  }
+  // Un producto con todas sus fotos: lo abre "Saber mas".
+  const mProductoId = /^\/api\/productos\/([^/]+)$/.exec(pathname);
+  if (mProductoId && req.method === 'GET') {
+    const id = decodeURIComponent(mProductoId[1]);
+    const p = loadProductos().find((x) => x && x.id === id);
+    if (!p) return sendJSON(res, 404, { error: 'Producto no encontrado' }, req);
+    return sendJSON(res, 200, p, req);
   }
   if (pathname === '/api/productos' && req.method === 'POST') {
     let body = {};
