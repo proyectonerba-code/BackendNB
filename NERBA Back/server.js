@@ -886,7 +886,18 @@ function createSession(email) {
 }
 function publicUser(u) {
   const last = u.lastLogin ? { fecha: u.lastLogin.fecha || '', hora: u.lastLogin.hora || '' } : null;
-  return { nombre: u.nombre, email: u.email, telefono: u.telefono || '', telefonoSec: u.telefonoSec || '', direccion: u.direccion || '', empresa: u.empresa || '', rol: u.rol, activo: u.activo !== false, tema: u.tema === 'dark' ? 'dark' : 'light', lastLogin: last, createdAt: u.createdAt || '' };
+  return { nombre: u.nombre, email: u.email, telefono: u.telefono || '', telefonoSec: u.telefonoSec || '', direccion: u.direccion || '', empresa: u.empresa || '', rol: u.rol, activo: u.activo !== false, tema: u.tema === 'dark' ? 'dark' : 'light', foto: u.foto || '', lastLogin: last, createdAt: u.createdAt || '' };
+}
+// Foto de perfil: data URL de imagen, tope 250KB en texto (~180KB reales).
+// El navegador la achica a 256px antes de mandarla (~20-40KB); el tope solo
+// rechaza basura. '' la borra. undefined = no viene en el request.
+const MAX_FOTO_PERFIL = 250 * 1024;
+function fotoPerfilValida(v) {
+  if (v === undefined) return undefined;
+  const s = String(v == null ? '' : v).trim();
+  if (!s) return '';
+  if (/^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(s) && s.length <= MAX_FOTO_PERFIL) return s;
+  return null;
 }
 function publicAudit(e) {
   return {
@@ -1428,12 +1439,19 @@ if (pathname === '/api/login' && req.method === 'POST') {
       if (body.direccion !== undefined) u.direccion = String(body.direccion).trim().slice(0, 240);
       if (body.empresa !== undefined) u.empresa = String(body.empresa).trim().slice(0, 160);
       if (body.tema === 'dark' || body.tema === 'light') u.tema = body.tema;
+      // Foto de perfil: vive en el servidor para que se vea igual en todas
+      // las computadoras (antes solo quedaba en el localStorage de cada una).
+      if (body.foto !== undefined) {
+        const f = fotoPerfilValida(body.foto);
+        if (f === null) return sendJSON(res, 400, { error: 'Foto no válida (JPG, PNG o WebP, máx 250KB)' });
+        u.foto = f;
+      }
       if (body.newPassword) {
         if (problemaDePassword(body.newPassword)) return sendJSON(res, 400, { error: problemaDePassword(body.newPassword) });
         if (!verifyPassword(body.currentPassword || '', u.passHash)) return sendJSON(res, 401, { error: 'La contrasena actual es incorrecta' });
         u.passHash = hashPassword(body.newPassword);
       }
-      persistUsers();
+      persistUsers(String(u.email || '').toLowerCase());
       return sendJSON(res, 200, publicUser(u));
     }
     if (req.method === 'DELETE') {
@@ -1855,7 +1873,12 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
       target.passHash = hashPassword(body.newPassword); target.passPropia = true;
       logAudit(req, { modulo: 'usuarios', evento: 'cambio-password', detalle: target.nombre, usuario: email });
     }
-    persistUsers();
+    if (body.foto !== undefined) {
+      const f = fotoPerfilValida(body.foto);
+      if (f === null) return sendJSON(res, 400, { error: 'Foto no válida (JPG, PNG o WebP, máx 250KB)' });
+      target.foto = f;
+    }
+    persistUsers(email);
     return sendJSON(res, 200, publicUser(target));
   }
   if (mUser && req.method === 'DELETE') {
