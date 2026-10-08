@@ -2686,7 +2686,19 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
             const ns = w.rows.map((r) => r.name);
             ajustes.walArchivos = ns.length;
             ajustes.walRango = ns.length ? (ns[0] + ' .. ' + ns[ns.length - 1]) : 'vacio';
+            const mt = [];
+            for (const n of ns) {
+              try {
+                const s = await poolW.query('SELECT modification FROM pg_stat_file($1)', ['pg_wal/' + n]);
+                mt.push(n.slice(-6) + '=' + String(s.rows[0].modification).slice(5, 16));
+              } catch (e) {}
+            }
+            ajustes.walMtimes = mt.join(' ');
           } catch (e) { ajustes.walArchivos = 'sin-permiso'; }
+          try {
+            const bg = await poolW.query('SELECT checkpoints_timed AS timed, checkpoints_req AS req FROM pg_stat_bgwriter');
+            ajustes.checkpoints = bg.rows[0];
+          } catch (e) { ajustes.checkpoints = 'sin-permiso'; }
         } catch (e) { ajustes.du = 'ERR: ' + String((e && e.message) || e).slice(0, 200); }
         if (body.ajustarWal) {
           const v = String(body.ajustarWal).slice(0, 16);
