@@ -27,6 +27,8 @@ const GROQ_MODEL = String(process.env.GROQ_MODEL || 'llama-3.3-70b-versatile').t
 // Si la llave es inválida o el modelo se retiró, no tiene caso intentarlo en
 // cada mensaje: se marca muerto y se va directo a Gemini.
 let GROQ_MUERTO = false;
+// Último error de Groq (para el diagnóstico de /api/chatbot/estado).
+let ULTIMO_ERROR_GROQ = '';
 const MODELOS_ALT = ['gemini-2.0-flash', 'gemini-flash-latest', 'gemini-1.5-flash'];
 // Google retira modelos por llave/region con el tiempo (2.5-flash y 2.0-flash
 // ya no existen para esta llave). Averiguarlo cuesta una llamada fallida cada
@@ -753,9 +755,11 @@ async function message({sessionId, user, question, catalog}) {
             picks,
             user,
           });
+          ULTIMO_ERROR_GROQ = '';
           return { answer: normalizeAnswer(generated, serverArea, picks), prov: 'groq' };
         } catch (e) {
-          console.log('NerBot Groq: ' + e.message);
+          ULTIMO_ERROR_GROQ = String((e && e.message) || 'error');
+          console.log('NerBot Groq: ' + ULTIMO_ERROR_GROQ);
         }
       }
       try {
@@ -848,6 +852,17 @@ module.exports = {
   message,
   history,
   feedback,
+  estado() {
+    return {
+      groqConfigured: !!GROQ_KEY,
+      groqMuerto: GROQ_MUERTO,
+      groqModelo: GROQ_MODEL,
+      ultimoErrorGroq: ULTIMO_ERROR_GROQ,
+      geminiModelo: MODELO_ACTUAL,
+      geminiConfigured: !!API_KEY,
+      enPausa: enPausa(),
+    };
+  },
   model: MODEL,
   thinkingLevel: THINKING_LEVEL,
   staff: NERBOT_STAFF,

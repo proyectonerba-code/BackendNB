@@ -1205,6 +1205,14 @@ async function manejar(req, res) {
     }
   }
 
+  // Estado de los proveedores del chat (solo SUPERADMIN): dice si hay llave
+  // de Groq, si se marcó muerta y el último error. Sin esto, depurar a ciegas.
+  if (pathname === '/api/chatbot/estado' && req.method === 'GET') {
+    const u = userByToken(getToken(req));
+    if (!u || u.rol !== 'SUPERADMIN') return sendJSON(res, 403, { error: 'Solo SUPERADMIN' }, req);
+    return sendJSON(res, 200, nerbot.estado(), req);
+  }
+
   if (pathname === '/api/chatbot/history' && req.method === 'GET') {
     const u = userByToken(getToken(req));
     if (!u) return sendJSON(res, 401, { error: 'Inicia sesión para consultar el historial.' }, req);
