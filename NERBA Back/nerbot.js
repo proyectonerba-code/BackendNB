@@ -665,15 +665,20 @@ async function callGroq({ question, history, catalog, area, picks, user }, reint
   }
   // A veces responde JSON válido pero con reply vacío: un reintento y, si
   // sigue vacío, se deja caer a Gemini en vez de mostrar el fallback.
-  if (!cleanText(out.reply, MAX_REPLY)) {
+  // gpt-oss a veces llama al campo "response" en vez de "reply": se acepta.
+  const texto = cleanText(out.reply || out.response || out.texto || out.message, MAX_REPLY);
+  if (!texto) {
     if (!reintento) return callGroq({ question, history, catalog, area, picks, user }, true);
     throw new Error('Groq devolvió respuesta vacía');
   }
+  out.reply = texto;
   return out;
 }
 
 function normalizeAnswer(out, area, picks) {
-  const reply = cleanText(out && out.reply, MAX_REPLY);
+  // El campo puede venir como reply (Gemini) o response (gpt-oss a veces
+  // inventa el nombre): se aceptan ambos para no volver al fallback.
+  const reply = cleanText(out && (out.reply || out.response || out.texto), MAX_REPLY);
   const finalArea = AREA_NAMES[out && out.area] ? out.area : area;
   const allowedIds = new Set(picks.map((p) => p.id));
   const productIds = Array.isArray(out && out.product_ids)
