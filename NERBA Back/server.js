@@ -2609,13 +2609,13 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
               try { return Number((await poolW.query('SELECT (pg_stat_file($1)).size AS s', [ruta])).rows[0].s) || 0; }
               catch (e) { return 0; }
             }
-            const hijos = (await poolW.query('SELECT name FROM pg_ls_dir($1)', [ruta])).rows.map((r) => r.name);
+            const hijos = (await poolW.query('SELECT pg_ls_dir($1) AS name', [ruta])).rows.map((r) => r.name);
             let n = 0;
             for (const h of hijos) n += await tam(ruta + '/' + h);
             return n;
           };
           const fm = (b) => b >= 1048576 ? (Math.round(b / 1048576 * 10) / 10 + 'MB') : (Math.round(b / 1024) + 'KB');
-          const toplevel = (await poolW.query("SELECT name FROM pg_ls_dir('.')")).rows.map((r) => r.name);
+          const toplevel = (await poolW.query("SELECT pg_ls_dir('.') AS name")).rows.map((r) => r.name);
           const du = [];
           for (const d of toplevel) du.push({ dir: d, tam: fm(await tam(d)) });
           ajustes.du = du;
