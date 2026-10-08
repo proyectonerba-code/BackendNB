@@ -2351,8 +2351,9 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
     const s = (v) => String(v == null ? '' : v).trim();
     const arr = (v) => Array.isArray(v) ? v.map(s).filter(Boolean) : s(v).split(/[;\n]+/).map((x) => x.trim()).filter(Boolean);
     // Sin almacenamiento externo las imagenes del catalogo deben ser URL
-    // (https), no base64: un base64 de 2MB por producto llena Postgres.
-    const imgs = arr(b.images).filter((x) => /^https?:\/\//i.test(x)).slice(0, 4);
+    // (https) o base64 chico (máx 200KB, misma regla que la validación); lo
+    // demás se descarta para no volver a llenar Postgres.
+    const imgs = arr(b.images).filter((x) => imagenCatalogoOk(x)).slice(0, 4);
     return {
       // Jerarquía del catálogo: marca (nivel 1) -> categoría/tipo (nivel 2) -> producto.
       brand: s(b.brand).slice(0, 60),
