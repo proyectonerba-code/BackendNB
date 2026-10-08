@@ -2619,7 +2619,7 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
           const du = [];
           for (const d of toplevel) du.push({ dir: d, tam: fm(await tam(d)) });
           ajustes.du = du;
-        } catch (e) { ajustes.du = 'sin-permiso'; }
+        } catch (e) { ajustes.du = 'ERR: ' + String((e && e.message) || e).slice(0, 200); }
         if (body.ajustarWal) {
           const v = String(body.ajustarWal).slice(0, 16);
           if (!/^\d+(MB|GB)$/i.test(v)) return sendJSON(res, 400, { error: 'Formato: número + MB/GB (ej. 128MB)' });
