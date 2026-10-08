@@ -137,25 +137,82 @@ function detectArea(text, catalog) {
   return 'GENERAL';
 }
 
+// categoryCode del panel de admin -> área del bot. Con esto, aunque la pregunta
+// no tenga las palabras exactas, un producto bien categorizado (p.ej. categoryCode
+// "cctv") se prioriza cuando el área detectada es SEGURIDAD. Sin este mapa los
+// 300+ productos "general" (hubs, cables, pantallas) aplastaban a los pocos
+// productos de seguridad reales y el bot decía "no tenemos cámaras" aunque sí
+// hubiera kits de videovigilancia en el catálogo.
+const AREA_POR_CODE = {
+  cctv: 'SEGURIDAD',
+  cerco: 'SEGURIDAD',
+  cercos: 'SEGURIDAD',
+  alarmas: 'SEGURIDAD',
+  seguridad: 'SEGURIDAD',
+  energizadores: 'SEGURIDAD',
+  videovigilancia: 'SEGURIDAD',
+  portones: 'PORTONES',
+  automatizacion: 'PORTONES',
+  mantenimiento: 'MANTENIMIENTO',
+  servicio: 'MANTENIMIENTO',
+  refacciones: 'VENTA_PARTES',
+  placas: 'PRODUCTOS_ELECTRONICOS',
+  potencia: 'PRODUCTOS_ELECTRONICOS',
+  sensores: 'PRODUCTOS_ELECTRONICOS',
+  electronica: 'PRODUCTOS_ELECTRONICOS',
+};
+
+// Palabras que delatan el área dentro del texto del producto. Da puntos extra a
+// los productos que sí son del tema, más allá de los términos exactos del cliente.
+const AREA_REGEX = {
+  SEGURIDAD: /cctv|alarma|cerco|seguridad|camara|videovigilancia|vigilancia|dvr|nvr|ptz|domo|bulbo|monitoreo|intrusion|energizador/i,
+  PORTONES: /porton|automatizacion|corredizo|levadizo|cochera|barrera|abrepuertas/i,
+  MANTENIMIENTO: /mantenimiento|reparacion|servicio tecnico|preventivo|correctivo|poliza/i,
+  VENTA_PARTES: /refaccion|repuesto|pieza|componente|conector|fuente de poder/i,
+  PRODUCTOS_ELECTRONICOS: /arduino|sensor|modulo|placa|electronico|electronica|raspberry|iot/i,
+  TECNOLOGIA_VARIADA: /wifi|router|switch|ups|biometrico|control de acceso/i,
+  PROYECTOS_ESPECIALES: /proyecto|infraestructura|industrial|nave|bodega|edificio/i,
+};
+
 function chooseCatalog(text, catalog, area) {
   const t = normalize(text);
   const terms = t.split(/\s+/).filter((x) => x.length >= 3);
   const list = Array.isArray(catalog) ? catalog : [];
+  const rx = AREA_REGEX[area];
   const scored = list.map((p) => {
     const hay = normalize([p.title, p.description, p.category, p.brand, p.idealFor].join(' '));
     let score = 0;
     for (const term of terms) if (hay.includes(term)) score++;
-    if (area === 'SEGURIDAD' && /cctv|alarma|cerco|seguridad/i.test(hay)) score += 2;
-    if (area === 'PORTONES' && /porton|puerta|automat/i.test(hay)) score += 2;
-    if (area === 'MANTENIMIENTO' && /mantenimiento|servicio/i.test(hay)) score += 2;
-    if (area === 'PRODUCTOS_ELECTRONICOS' && p.electronico) score += 2;
+    // El producto está bien categorizado para esta área: sube mucho.
+    if (AREA_POR_CODE[normalize(p.categoryCode)] === area) score += 4;
+    // El texto del producto habla del tema de esta área.
+    if (rx && rx.test(hay)) score += 2;
     return { p, score };
   }).filter((x) => x.score > 0).sort((a, b) => b.score - a.score).slice(0, 6);
   return scored.map((x) => x.p);
 }
 
+// Muestra variada del catálogo (un producto por categoría) para cuando la
+// pregunta es tan genérica ("hola") que ningún producto matchea. Antes se
+// mandaban los primeros 40, que en este negocio son puras memorias USB y
+// cables, y el bot terminaba diciendo que solo vendemos accesorios.
+function muestraRepresentativa(catalog, max) {
+  const list = Array.isArray(catalog) ? catalog : [];
+  const porCodigo = {};
+  const varios = [];
+  for (const p of list) {
+    const codigo = normalize(p.categoryCode || p.category || 'varios');
+    if (!porCodigo[codigo]) { porCodigo[codigo] = true; varios.push(p); }
+    if (varios.length >= (max || 20)) break;
+  }
+  return varios;
+}
+
 function sanitizeCatalog(catalog) {
-  return (Array.isArray(catalog) ? catalog : []).slice(0, 120).map((p) => ({
+  // Sin el slice(0,120): los productos útilmente categorizados (cctv, cerco,
+  // alarmas...) suelen estar al final del listado del admin y el corte los
+  // descartaba antes de que el bot pudiera siquiera ofrecerlos.
+  return (Array.isArray(catalog) ? catalog : []).map((p) => ({
     id: cleanText(p.id, 120),
     brand: cleanText(p.brand, 100),
     categoryCode: cleanText(p.categoryCode, 100),
@@ -425,7 +482,7 @@ function fallbackReply(question, area, picks, history) {
 // El prompt se arma una sola vez y lo usan ambos proveedores (Gemini y
 // Groq): mismo sistema, mismo historial, mismo catálogo.
 function armaPrompt({ question, history, catalog, area, picks, user }) {
-  const catalogBlock = JSON.stringify(picks.length ? picks : catalog.slice(0, 40));
+  const catalogBlock = JSON.stringify(picks.length ? picks : muestraRepresentativa(catalog, 24));
   const historyBlock = history.map((m) => ({
     role: m.role === 'model' ? 'model' : 'user',
     parts: [{ text: cleanText(m.content, 2500) }],
