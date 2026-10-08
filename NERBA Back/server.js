@@ -2698,12 +2698,12 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
           try {
             const bg = await poolW.query('SELECT checkpoints_timed AS timed, checkpoints_req AS req FROM pg_stat_bgwriter');
             ajustes.checkpoints = bg.rows[0];
-          } catch (e) { ajustes.checkpoints = 'sin-permiso'; }
+          } catch (e) { ajustes.checkpoints = 'ERR: ' + String((e && e.message) || e).slice(0, 120); }
           // Backup atorado (pg_basebackup sin cerrar) retiene WAL para siempre.
           try {
             const b = await poolW.query('SELECT pg_is_in_backup() AS en');
             ajustes.enBackup = b.rows[0].en;
-          } catch (e) { ajustes.enBackup = 'sin-permiso'; }
+          } catch (e) { ajustes.enBackup = 'ERR: ' + String((e && e.message) || e).slice(0, 120); }
         } catch (e) { ajustes.du = 'ERR: ' + String((e && e.message) || e).slice(0, 200); }
         if (body.ajustarWal) {
           const v = String(body.ajustarWal).slice(0, 16);
