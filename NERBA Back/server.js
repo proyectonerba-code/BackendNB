@@ -2714,12 +2714,13 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
         // Duh del PGDATA a un nivel: por si lo gordo no es WAL sino otra cosa.
         try {
           const tam = async (ruta) => {
-            const esDir = (await poolW.query('SELECT pg_isdir($1::text) AS d', [ruta])).rows[0].d;
-            if (!esDir) {
-              try { return Number((await poolW.query('SELECT (pg_stat_file($1)).size AS s', [ruta])).rows[0].s) || 0; }
-              catch (e) { return 0; }
-            }
-            const hijos = (await poolW.query('SELECT pg_ls_dir($1) AS name', [ruta])).rows.map((r) => r.name);
+            let st = null;
+            try { st = (await poolW.query('SELECT (pg_stat_file($1)).*', [ruta])).rows[0]; }
+            catch (e) { return 0; }
+            if (!st || !st.isdir) return Number((st && st.size) || 0);
+            let hijos = [];
+            try { hijos = (await poolW.query('SELECT pg_ls_dir($1) AS name', [ruta])).rows.map((r) => r.name); }
+            catch (e) { return 0; }
             let n = 0;
             for (const h of hijos) n += await tam(ruta + '/' + h);
             return n;
