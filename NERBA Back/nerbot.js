@@ -32,6 +32,9 @@ const GROQ_MODEL = String(process.env.GROQ_MODEL || 'openai/gpt-oss-20b').trim()
 let GROQ_MUERTO = false;
 // Último error de Groq (para el diagnóstico de /api/chatbot/estado).
 let ULTIMO_ERROR_GROQ = '';
+// Crudo de la última respuesta de Groq (recortado): para ver qué devuelve
+// cuando la respuesta sale vacía. Solo visible en /api/chatbot/estado.
+let ULTIMO_RAW_GROQ = '';
 const MODELOS_ALT = ['gemini-2.0-flash', 'gemini-flash-latest', 'gemini-1.5-flash'];
 // Google retira modelos por llave/region con el tiempo (2.5-flash y 2.0-flash
 // ya no existen para esta llave). Averiguarlo cuesta una llamada fallida cada
@@ -623,6 +626,7 @@ async function callGroq({ question, history, catalog, area, picks, user }, reint
     throw new Error('Groq sin respuesta: ' + ((e && e.message) || 'red'));
   }
   const raw = await response.text();
+  ULTIMO_RAW_GROQ = raw.slice(0, 400);
   if (response.status === 401 || response.status === 404) {
     GROQ_MUERTO = true;
     console.log('NerBot: Groq no disponible (' + response.status + '), se sigue solo con Gemini.');
@@ -867,6 +871,7 @@ module.exports = {
       groqMuerto: GROQ_MUERTO,
       groqModelo: GROQ_MODEL,
       ultimoErrorGroq: ULTIMO_ERROR_GROQ,
+      groqRaw: ULTIMO_RAW_GROQ,
       geminiModelo: MODELO_ACTUAL,
       geminiConfigured: !!API_KEY,
       enPausa: enPausa(),
