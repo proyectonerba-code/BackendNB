@@ -363,6 +363,11 @@ function borrarQuoteEnDb(folio) {
 // fila de la tabla de cotizaciones, solo le saca las imagenes. El folio sigue
 // ahi, asi que el siguiente numero continua igual.
 const archivoFotosFile = path.join(DATA_DIR, 'fotos-archivo.json');
+// Fotos en disco (Railway Volume montado en DATA_DIR): los bytes salen de
+// Postgres. En PG solo queda el meta (folio, n, kb). El registro de la
+// cotizacion no se borra nunca.
+const FOTOS_DIR = path.join(DATA_DIR, 'fotos');
+try { fs.mkdirSync(FOTOS_DIR, { recursive: true }); } catch {}
 let cFotosArchivo = null;
 function archivoLocal() {
   if (cFotosArchivo) return cFotosArchivo;
@@ -399,11 +404,45 @@ async function metaFotosArchivadas(folio) {
   return copia;
 }
 async function binFotosArchivadas(folio) {
-  if (DB_MODE) return (await db.get('kv_fotos_bin', folio)) || null;
+  // Disco primero (ya migradas): no toca Postgres.
+  try {
+    const f = path.join(FOTOS_DIR, String(folio).replace(/[^A-Za-z0-9._-]+/g, '_') + '.json');
+    if (fs.existsSync(f)) {
+      const d = JSON.parse(fs.readFileSync(f, 'utf8'));
+      if (d && Array.isArray(d.fotos)) return d.fotos;
+    }
+  } catch {}
+  if (DB_MODE) {
+    const b = await db.get('kv_fotos_bin', folio);
+    if (b && Array.isArray(b.fotos)) return b.fotos;
+    if (b && Array.isArray(b)) return b;
+    return null;
+  }
   const e = archivoLocal()[folio];
   return e && Array.isArray(e.fotos) ? e.fotos : null;
 }
+function guardarFotosDisco(folio, fotos) {
+  const f = path.join(FOTOS_DIR, String(folio).replace(/[^A-Za-z0-9._-]+/g, '_') + '.json');
+  fs.writeFileSync(f, JSON.stringify({ folio, fotos }));
+  return f;
+}
 async function guardarFotosArchivadas(folio, meta, fotos) {
+  // Preferir disco: PG solo guarda meta liviano. Si el disco falla, caer a PG.
+  try {
+    guardarFotosDisco(folio, fotos);
+    const metaDisco = { ...meta, enDisco: true };
+    if (DB_MODE) {
+      await db.upsert('kv_fotos_archivo', folio, metaDisco);
+      await db.borrar('kv_fotos_bin', folio);
+      return;
+    }
+    const a = archivoLocal();
+    a[folio] = metaDisco;
+    try { fs.unlinkSync(path.join(FOTOS_DIR, String(folio).replace(/[^A-Za-z0-9._-]+/g, '_') + '.json')); } catch {}
+    guardarFotosDisco(folio, fotos);
+    guardarJSONDespues(archivoFotosFile, a);
+    return;
+  } catch {}
   if (DB_MODE) {
     await db.upsert('kv_fotos_bin', folio, { folio: folio, fotos: fotos });
     await db.upsert('kv_fotos_archivo', folio, meta);
@@ -415,6 +454,7 @@ async function guardarFotosArchivadas(folio, meta, fotos) {
 }
 async function borrarFotosArchivadas(folio) {
   if (!folio) return;
+  try { fs.unlinkSync(path.join(FOTOS_DIR, String(folio).replace(/[^A-Za-z0-9._-]+/g, '_') + '.json')); } catch {}
   if (DB_MODE) {
     await db.borrar('kv_fotos_bin', folio);
     await db.borrar('kv_fotos_archivo', folio);
@@ -986,14 +1026,12 @@ function matchesSearch(value, query) {
 // medio enviar, que es lo que el cliente veía como "no deja subir".
 const MAX_BODY_BYTES = 16 * 1024 * 1024;
 // Topes de las fotos que adjunta el cliente a una solicitud.
-// 20 fotos es lo que el cotizador ofrece en Proyecto Especial y 5 en el resto,
-// asi que el servidor tiene que aguantar el caso mayor: se sube el conteo a 20
-// y el peso por foto a 1.2 MB (el front ya las achica a 1000-1200 px, así que
-// una foto real pesa 100-250 KB; el tope es solo para una que llegue sin
-// comprimir). El tope que de verdad protege es el total: 10 MB.
-const MAX_FOTOS_COTIZACION = 20;
-const MAX_BYTES_FOTO_COTIZACION = 1200 * 1024;
-const MAX_BYTES_TOTAL_FOTOS = 10 * 1024 * 1024;
+// Sin R2/tarjeta los bytes viven en Postgres: 20 fotos x 10MB por cita
+// llenan el disco (86% actual). Se baja a 8 fotos y 4MB totales; el front
+// ya comprime a 1000-1200px (~150-250KB c/u), asi que 8 siguen sobrando.
+const MAX_FOTOS_COTIZACION = 8;
+const MAX_BYTES_FOTO_COTIZACION = 900 * 1024;
+const MAX_BYTES_TOTAL_FOTOS = 4 * 1024 * 1024;
 function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -1757,6 +1795,75 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
   }
 
   // Ver las fotos de una cotizacion archivada (mismos permisos que verla).
+  // ----- liberacion de espacio en Postgres (solo SUPERADMIN, sin R2) -----
+  // Borra sesiones/recuperaciones vencidas, recorta auditoria a 2000 y borra
+  // fotos archivadas con mas de `dias` dias. Antes de borrar el ZIP, bajalo
+  // desde GET /api/archivo/fotos.zip como respaldo.
+  if (pathname === '/api/admin/liberar-espacio' && req.method === 'POST') {
+    const u = userByToken(getToken(req));
+    if (!u || u.rol !== 'SUPERADMIN') return sendJSON(res, 403, { error: 'Solo el Super Admin puede liberar espacio' }, req);
+    if (!DB_MODE) return sendJSON(res, 400, { error: 'Sin Postgres no hay nada que liberar' }, req);
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const dias = Math.max(7, parseInt(body.diasFotos || '60', 10) || 60);
+    let antes = [];
+    try { antes = await db.tamanos(); } catch {}
+    const rep = await db.liberarEspacio({ diasFotos: dias });
+    let despues = [];
+    try { despues = await db.tamanos(); } catch {}
+    logAudit(req, { modulo: 'sistema', evento: 'liberar-espacio', detalle: 'sesiones:' + rep.sesionesBorradas + ' audit:' + rep.auditoriaBorrada + ' fotos:' + rep.fotosViejasBorradas });
+    return sendJSON(res, 200, { ok: true, ...rep, antes, despues }, req);
+  }
+  if (pathname === '/api/admin/espacio' && req.method === 'GET') {
+    const u = userByToken(getToken(req));
+    if (!u || u.rol !== 'SUPERADMIN') return sendJSON(res, 403, { error: 'Solo el Super Admin puede ver el espacio' }, req);
+    if (!DB_MODE) return sendJSON(res, 400, { error: 'Sin Postgres' }, req);
+    const tablas = await db.tamanos();
+    return sendJSON(res, 200, { tablas }, req);
+  }
+  // Mueve bytes de fotos de Postgres a disco (Volume en DATA_DIR/fotos).
+  // No borra cotizaciones: el registro queda, solo salen los bytes de PG.
+  if (pathname === '/api/admin/mover-fotos-disco' && req.method === 'POST') {
+    const u = userByToken(getToken(req));
+    if (!u || u.rol !== 'SUPERADMIN') return sendJSON(res, 403, { error: 'Solo el Super Admin puede mover fotos' }, req);
+    let movidas = 0, fotosN = 0, errores = 0;
+    // 1) bins que siguen en PG -> disco
+    if (DB_MODE) {
+      let claves = [];
+      try { claves = Object.keys(await db.loadAll('kv_fotos_bin')); } catch {}
+      for (const k of claves) {
+        try {
+          const b = await db.get('kv_fotos_bin', k);
+          const arr = b && Array.isArray(b.fotos) ? b.fotos : (Array.isArray(b) ? b : []);
+          if (arr.length) { guardarFotosDisco(k, arr); fotosN += arr.length; }
+          await db.borrar('kv_fotos_bin', k);
+          try {
+            const m = await db.get('kv_fotos_archivo', k);
+            if (m) await db.upsert('kv_fotos_archivo', k, { ...m, enDisco: true });
+          } catch {}
+          movidas++;
+        } catch { errores++; }
+      }
+    }
+    // 2) cotizaciones con fotos en memoria -> archivar a disco via flujo normal
+    for (const c of Object.values(quotes)) {
+      if (!Array.isArray(c.fotos) || !c.fotos.length) continue;
+      try {
+        const fotos = c.fotos;
+        const meta = metaArchivo(c, fotos);
+        await guardarFotosArchivadas(c.folio, meta, fotos);
+        c.fotos = [];
+        c.fotosN = fotos.length;
+        c.fotosArchivadas = { n: meta.n, kb: meta.kb, archivada: meta.archivada, enDisco: true };
+        persistQuotes(c.folio);
+        movidas++;
+        fotosN += fotos.length;
+      } catch { errores++; }
+    }
+    logAudit(req, { modulo: 'sistema', evento: 'mover-fotos-disco', detalle: movidas + ' movidas, ' + fotosN + ' fotos' });
+    return sendJSON(res, 200, { ok: true, movidas, fotos: fotosN, errores }, req);
+  }
+
   const mFotosArchivadas = /^\/api\/archivo\/fotos\/([^/]+)$/.exec(pathname);
   if (mFotosArchivadas && req.method === 'GET') {
     const u = userByToken(getToken(req));
@@ -2289,6 +2396,9 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
   function cleanProduct(b) {
     const s = (v) => String(v == null ? '' : v).trim();
     const arr = (v) => Array.isArray(v) ? v.map(s).filter(Boolean) : s(v).split(/[;\n]+/).map((x) => x.trim()).filter(Boolean);
+    // Sin almacenamiento externo las imagenes del catalogo deben ser URL
+    // (https), no base64: un base64 de 2MB por producto llena Postgres.
+    const imgs = arr(b.images).filter((x) => /^https?:\/\//i.test(x)).slice(0, 4);
     return {
       // Jerarquía del catálogo: marca (nivel 1) -> categoría/tipo (nivel 2) -> producto.
       brand: s(b.brand).slice(0, 60),
@@ -2296,7 +2406,7 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
       category: s(b.category) || s(b.categoryCode) || 'General',
       title: s(b.title),
       description: s(b.description),
-      images: arr(b.images),
+      images: imgs,
       idealFor: arr(b.idealFor),
       electronico: b.electronico === true || String(b.electronico).toLowerCase() === 'true',
     };

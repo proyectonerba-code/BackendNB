@@ -16,6 +16,9 @@ function getPool() {
   pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: process.env.PGSSL === '0' ? false : { rejectUnauthorized: false },
+    max: 5,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
   });
   pool.on('error', (e) => console.log('PG pool: ' + e.message));
   return pool;
@@ -203,4 +206,45 @@ function wt(promise) {
   Promise.resolve(promise).catch((e) => console.log('Aviso PG write: ' + e.message));
 }
 
-module.exports = { isEnabled, init, replaceAll, upsert, borrar, get, loadAll, loadAllState, wt, getPool };
+// Limpieza sin servicios externos (sin R2/tarjeta): borra lo vencido y lo
+// viejo que ya no se consulta, y devuelve lo liberado. NO borra cotizaciones:
+// solo sesiones/recuperaciones vencidas, auditoria excedente (>2000) y fotos
+// archivadas con mas de DIAS_FOTOS dias (el PDF ya quedo generado).
+async function tamanos() {
+  const p = getPool();
+  const r = await p.query(`
+    SELECT relname AS tabla, pg_total_relation_size(relid) AS bytes, n_live_tup AS filas
+    FROM pg_stat_user_tables ORDER BY pg_total_relation_size(relid) DESC`);
+  return r.rows;
+}
+
+async function liberarEspacio(opciones) {
+  const dias = Math.max(7, parseInt((opciones && opciones.diasFotos) || process.env.FOTOS_DIAS || '60', 10) || 60);
+  const p = getPool();
+  const reporte = { diasFotos: dias };
+  const s1 = await p.query(`DELETE FROM kv_sessions WHERE expires_at < $1`, [Date.now()]);
+  reporte.sesionesBorradas = s1.rowCount || 0;
+  const s2 = await p.query(`DELETE FROM kv_recuperacion WHERE (data->>'expiresAt')::bigint < $1`, [Date.now()]);
+  reporte.recuperacionesBorradas = s2.rowCount || 0;
+  // Auditoria: solo ultimas 2000 (igual que persistAudit en server.js).
+  const s3 = await p.query(`DELETE FROM kv_auditoria WHERE key NOT IN (SELECT key FROM kv_auditoria ORDER BY key DESC LIMIT 2000)`);
+  reporte.auditoriaBorrada = s3.rowCount || 0;
+  // Fotos archivadas viejas: el meta guarda ISO en "archivada".
+  const corte = new Date(Date.now() - dias * 864e5).toISOString();
+  const viejas = await p.query(`SELECT key FROM kv_fotos_archivo WHERE (data->>'archivada') < $1`, [corte]);
+  const claves = viejas.rows.map((r) => r.key);
+  reporte.fotosViejasBorradas = 0;
+  for (const k of claves) {
+    await p.query(`DELETE FROM kv_fotos_bin WHERE key = $1`, [k]);
+    await p.query(`DELETE FROM kv_fotos_archivo WHERE key = $1`, [k]);
+    reporte.fotosViejasBorradas++;
+  }
+  await p.query(`VACUUM ANALYZE kv_sessions`);
+  await p.query(`VACUUM ANALYZE kv_recuperacion`);
+  await p.query(`VACUUM ANALYZE kv_auditoria`);
+  await p.query(`VACUUM ANALYZE kv_fotos_bin`);
+  await p.query(`VACUUM ANALYZE kv_fotos_archivo`);
+  return reporte;
+}
+
+module.exports = { isEnabled, init, replaceAll, upsert, borrar, get, loadAll, loadAllState, wt, getPool, tamanos, liberarEspacio };
