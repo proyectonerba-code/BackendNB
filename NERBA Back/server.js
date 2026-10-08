@@ -2601,6 +2601,25 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
           try { ajustes[n] = (await poolW.query('SHOW ' + n)).rows[0][n]; }
           catch (e) { ajustes[n] = 'sin-permiso'; }
         }
+        // Duh del PGDATA a un nivel: por si lo gordo no es WAL sino otra cosa.
+        try {
+          const tam = async (ruta) => {
+            const esDir = (await poolW.query('SELECT pg_isdir($1) AS d', [ruta])).rows[0].d;
+            if (!esDir) {
+              try { return Number((await poolW.query('SELECT (pg_stat_file($1)).size AS s', [ruta])).rows[0].s) || 0; }
+              catch (e) { return 0; }
+            }
+            const hijos = (await poolW.query('SELECT name FROM pg_ls_dir($1)', [ruta])).rows.map((r) => r.name);
+            let n = 0;
+            for (const h of hijos) n += await tam(ruta + '/' + h);
+            return n;
+          };
+          const fm = (b) => b >= 1048576 ? (Math.round(b / 1048576 * 10) / 10 + 'MB') : (Math.round(b / 1024) + 'KB');
+          const toplevel = (await poolW.query("SELECT name FROM pg_ls_dir('.')")).rows.map((r) => r.name);
+          const du = [];
+          for (const d of toplevel) du.push({ dir: d, tam: fm(await tam(d)) });
+          ajustes.du = du;
+        } catch (e) { ajustes.du = 'sin-permiso'; }
         if (body.ajustarWal) {
           const v = String(body.ajustarWal).slice(0, 16);
           if (!/^\d+(MB|GB)$/i.test(v)) return sendJSON(res, 400, { error: 'Formato: número + MB/GB (ej. 128MB)' });
