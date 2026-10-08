@@ -591,7 +591,7 @@ async function callGemini({ question, history, catalog, area, picks, user }) {
 // Groq: mismo prompt y mismo JSON de respuesta que Gemini, por su API
 // compatible con OpenAI. Si la llave es inválida o el modelo se retiró (401
 // o 404), se marca muerto para no intentarlo en cada mensaje.
-async function callGroq({ question, history, catalog, area, picks, user }) {
+async function callGroq({ question, history, catalog, area, picks, user }, reintento) {
   if (!GROQ_KEY) throw new Error('GROQ_API_KEY no configurada');
   if (GROQ_MUERTO) throw new Error('Groq marcado no disponible');
   const { systemText, contents } = armaPrompt({ question, history, catalog, area, picks, user });
@@ -649,15 +649,21 @@ async function callGroq({ question, history, catalog, area, picks, user }) {
     payload && payload.choices && payload.choices[0] && payload.choices[0].message
       ? payload.choices[0].message.content : '', MAX_REPLY);
   if (!text) throw new Error('Groq no devolvió contenido');
-  try {
-    return JSON.parse(text);
-  } catch {
+  let out;
+  try { out = JSON.parse(text); } catch {
     const m = text.match(/\{[\s\S]*\}/);
     if (m) {
-      try { return JSON.parse(m[0]); } catch {}
+      try { out = JSON.parse(m[0]); } catch {}
     }
-    throw new Error('Groq devolvió JSON inválido');
+    if (!out) throw new Error('Groq devolvió JSON inválido');
   }
+  // A veces responde JSON válido pero con reply vacío: un reintento y, si
+  // sigue vacío, se deja caer a Gemini en vez de mostrar el fallback.
+  if (!cleanText(out.reply, MAX_REPLY)) {
+    if (!reintento) return callGroq({ question, history, catalog, area, picks, user }, true);
+    throw new Error('Groq devolvió respuesta vacía');
+  }
+  return out;
 }
 
 function normalizeAnswer(out, area, picks) {
