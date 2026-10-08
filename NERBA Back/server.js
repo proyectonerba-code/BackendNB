@@ -2531,15 +2531,43 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
       if (seen[code]) return;
       seen[code] = true;
       const o = over[code] || {};
-      out.push({ code, label: o.label || label, image: o.image || '', total: 0 });
+      out.push({ code, label: o.label || label, image: o.image || '', orden: Number(o.orden) || 0, total: 0 });
     });
     Object.keys(over).forEach((code) => {
       if (seen[code]) return;
       seen[code] = true;
-      out.push({ code, label: over[code].label || code, image: over[code].image || '', total: 0 });
+      out.push({ code, label: over[code].label || code, image: over[code].image || '', orden: Number(over[code].orden) || 0, total: 0 });
+    });
+    // Las que tienen orden manual van primero (1..n); el resto al final.
+    out.sort((a, b) => {
+      const oa = a.orden || 999999, ob = b.orden || 999999;
+      if (oa !== ob) return oa - ob;
+      return String(a.label || '').localeCompare(String(b.label || ''));
     });
     out.forEach((b) => { b.total = loadProductos().filter((p) => slugMarca(p.brand || 'NERBA') === b.code).length; });
     return sendJSON(res, 200, out);
+  }
+  // Orden manual de marcas (flechas del panel admin). Guarda la lista entera
+  // de codes en el orden nuevo y renumera 1..n, igual que /api/servicios/ordenar.
+  if (pathname === '/api/marcas/ordenar' && req.method === 'POST') {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const u = userByToken(getToken(req));
+    if (!u || !isStaff(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
+    const orden = Array.isArray(body.orden) ? body.orden.map((x) => slugMarca(x)) : [];
+    if (!orden.length) return sendJSON(res, 400, { error: 'No se recibió el orden nuevo' });
+    const over = loadMarcas();
+    const cambios = [];
+    orden.forEach((code, i) => {
+      const prev = Number((over[code] && over[code].orden) || 0);
+      if (prev !== i + 1) {
+        over[code] = { label: (over[code] && over[code].label) || code, image: (over[code] && over[code].image) || '', orden: i + 1 };
+        cambios.push(code);
+      }
+    });
+    saveMarcas(over);
+    logAudit(req, { modulo: 'catalogo', evento: 'orden-marcas', detalle: cambios.length ? cambios.join(' | ') : 'sin cambios' });
+    return sendJSON(res, 200, { ok: true });
   }
   const mMarca = /^\/api\/marcas\/(.+)$/.exec(pathname);
   if (mMarca && (req.method === 'PUT' || req.method === 'DELETE')) {
@@ -2564,6 +2592,7 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
     over[code] = {
       label: String(body.label || (over[code] && over[code].label) || code).slice(0, 80),
       image: String(body.image || '').slice(0, 2000000),
+      orden: Number((over[code] && over[code].orden) || 0) || 0,
     };
     saveMarcas(over);
     logAudit(req, { modulo: 'catalogo', evento: 'edicion', detalle: 'Marca ' + code });
