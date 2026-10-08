@@ -2330,8 +2330,25 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
     }
     return { lista: salida, recibidas, guardadas: salida.length };
   }
+  // Lista LIVIANA: sin bytes de imagenes (solo cuantas trae). Con cientos de
+  // publicaciones, mandar las fotos en la lista son decenas de MB por
+  // refresco y el catálogo no carga. Las fotos se piden por producto
+  // (GET /api/productos/:id) solo cuando se van a ver.
+  function productoLista(p) {
+    const out = { ...p };
+    out.nFotos = Array.isArray(p.images) ? p.images.length : 0;
+    delete out.images;
+    return out;
+  }
   if (pathname === '/api/productos' && req.method === 'GET') {
-    return sendJSON(res, 200, loadProductos());
+    return sendJSON(res, 200, loadProductos().map(productoLista));
+  }
+  // Detalle completo (con fotos) de una publicación. Público como el catálogo.
+  const mProdGet = /^\/api\/productos\/([^/]+)$/.exec(pathname);
+  if (mProdGet && req.method === 'GET') {
+    const p = loadProductos().find((x) => x.id === mProdGet[1]);
+    if (!p) return sendJSON(res, 404, { error: 'No encontrada' });
+    return sendJSON(res, 200, p);
   }
   if (pathname === '/api/productos' && req.method === 'POST') {
     let body = {};
