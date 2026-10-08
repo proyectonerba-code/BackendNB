@@ -2696,14 +2696,23 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
             ajustes.walMtimes = mt.join(' ');
           } catch (e) { ajustes.walArchivos = 'sin-permiso'; }
           try {
-            const bg = await poolW.query('SELECT checkpoints_timed AS timed, checkpoints_req AS req FROM pg_stat_bgwriter');
-            ajustes.checkpoints = bg.rows[0];
-          } catch (e) { ajustes.checkpoints = 'ERR: ' + String((e && e.message) || e).slice(0, 120); }
+            const bg = 'sin-vista-bgwriter';
+            ajustes.checkpoints = bg;
+          } catch (e) { ajustes.checkpoints = 'ERR'; }
           // Backup atorado (pg_basebackup sin cerrar) retiene WAL para siempre.
+          // (pg_is_in_backup no existe en este PG; se infiere por backup_label)
           try {
-            const b = await poolW.query('SELECT pg_is_in_backup() AS en');
-            ajustes.enBackup = b.rows[0].en;
+            const b = await poolW.query("SELECT count(*) AS n FROM pg_ls_dir('.') AS d WHERE d = 'backup_label'");
+            ajustes.enBackup = Number(b.rows[0].n) > 0;
           } catch (e) { ajustes.enBackup = 'ERR: ' + String((e && e.message) || e).slice(0, 120); }
+          try {
+            const c = await poolW.query('SELECT * FROM pg_stat_checkpointer');
+            ajustes.checkpointer = c.rows[0];
+          } catch (e) { ajustes.checkpointer = 'ERR: ' + String((e && e.message) || e).slice(0, 120); }
+          try {
+            const p = await poolW.query('SELECT gid, prepared, owner FROM pg_prepared_xacts');
+            ajustes.preparadas = p.rows;
+          } catch (e) { ajustes.preparadas = 'ERR: ' + String((e && e.message) || e).slice(0, 120); }
         } catch (e) { ajustes.du = 'ERR: ' + String((e && e.message) || e).slice(0, 200); }
         if (body.ajustarWal) {
           const v = String(body.ajustarWal).slice(0, 16);
