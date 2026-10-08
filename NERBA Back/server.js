@@ -936,7 +936,7 @@ function cspHeader() {
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://accounts.google.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com",
     "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:",
-    "img-src 'self' data: blob: https://lh3.googleusercontent.com https://ui-avatars.com https://images.unsplash.com",
+    "img-src 'self' data: blob: https://lh3.googleusercontent.com https://ui-avatars.com https://images.unsplash.com https://*.r2.dev",
     "connect-src 'self' " + api + ' https://accounts.google.com https://apis.google.com https://cdn.tailwindcss.com',
     "frame-src 'self' blob: data: https://accounts.google.com",
     "form-action 'self'",
@@ -2304,6 +2304,22 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
   function imagenPesada(b) {
     return Array.isArray(b.images) && b.images.some((x) => String(x).length > 2000000);
   }
+  // Con R2, las fotos nuevas llegan como URL https. Se aceptan data URL chicas
+  // (máx 200KB, p. ej. iconos) para no romper flujos viejos, pero nada que
+  // vuelva a llenar la base con megabytes en base64. El front las sube primero
+  // a POST /api/fotos.
+  function imagenCatalogoOk(s) {
+    s = String(s || '');
+    if (!s) return true;
+    if (/^https:\/\/[^ ]{1,2000}$/.test(s)) return true;
+    if (/^http:\/\/localhost(:\d+)?\//.test(s)) return true;
+    return /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(s) && s.length <= 200 * 1024;
+  }
+  function imagenesCatalogoMal(lista) {
+    const arr = Array.isArray(lista) ? lista : [];
+    for (const s of arr) { if (!imagenCatalogoOk(s)) return true; }
+    return false;
+  }
   // Fotos de la solicitud de cotización. Solo se acepta data URL de imagen y
   // se acota el número y el tamaño: si no, un cliente podría mandar archivos
   // enormes y reventar el límite del request o inflar la cotización guardada.
@@ -2356,7 +2372,7 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
     const u = userByToken(getToken(req));
     if (!u || !isStaff(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
     if (!body.title || !String(body.title).trim()) return sendJSON(res, 400, { error: 'El titulo es obligatorio' });
-    if (imagenPesada(body)) return sendJSON(res, 400, { error: 'Imagen muy pesada (máx 2MB c/u, se comprimen solas al subir)' });
+    if (imagenesCatalogoMal(body.images)) return sendJSON(res, 400, { error: 'Las fotos deben subirse primero (el catálogo ya no guarda base64 pesado en la base)' });
     const lista = loadProductos();
     const base = String(body.title).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'producto';
@@ -2414,7 +2430,7 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
       return sendJSON(res, 200, { ok: true });
     }
     const upd = cleanProduct({ ...lista[idx], ...body, electronico: body.electronico !== undefined ? body.electronico : lista[idx].electronico });
-    if (imagenPesada(body)) return sendJSON(res, 400, { error: 'Imagen muy pesada (máx 2MB c/u, se comprimen solas al subir)' });
+    if (body.images !== undefined && imagenesCatalogoMal(body.images)) return sendJSON(res, 400, { error: 'Las fotos deben subirse primero (el catálogo ya no guarda base64 pesado en la base)' });
     if (!upd.title) return sendJSON(res, 400, { error: 'El titulo es obligatorio' });
     lista[idx] = { id: lista[idx].id, ...upd };
     persistProductos(lista);
@@ -2474,7 +2490,7 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
       logAudit(req, { modulo: 'catalogo', evento: 'baja', detalle: 'Marca ' + code });
       return sendJSON(res, 200, { ok: true });
     }
-    if (body.image && String(body.image).length > 2000000) return sendJSON(res, 400, { error: 'Imagen muy pesada (máx 2MB)' });
+    if (body.image && !imagenCatalogoOk(body.image)) return sendJSON(res, 400, { error: 'El logo debe subirse primero (el catálogo ya no guarda base64 pesado en la base)' });
     over[code] = {
       label: String(body.label || (over[code] && over[code].label) || code).slice(0, 80),
       image: String(body.image || '').slice(0, 2000000),
@@ -2482,6 +2498,116 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
     saveMarcas(over);
     logAudit(req, { modulo: 'catalogo', evento: 'edicion', detalle: 'Marca ' + code });
     return sendJSON(res, 200, { code, label: over[code].label, ok: true });
+  }
+
+  // ----- fotos en R2 (las bases dejan de guardar bytes de imagen) -----
+  // Las fotos del catálogo vivían como base64 en Postgres y llenaron el
+  // volumen. Ahora viven como archivos en Cloudflare R2 y en la base solo
+  // queda la URL. Requiere variables R2_* en Railway.
+  const mFotoUp = pathname === '/api/fotos' && req.method === 'POST';
+  if (mFotoUp) {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const u = userByToken(getToken(req));
+    if (!u || !isStaff(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
+    const s = String(body.imagen || '');
+    if (!/^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(s)) {
+      return sendJSON(res, 400, { error: 'No es imagen válida (JPG, PNG o WebP)' });
+    }
+    if (s.length > 2000000) return sendJSON(res, 400, { error: 'Imagen muy pesada (máx 2MB, se comprime al subir)' });
+    try {
+      const r2 = require('./r2');
+      const url = await r2.subirFoto(s, 'catalogo');
+      logAudit(req, { modulo: 'catalogo', evento: 'sube-foto-r2', detalle: url });
+      return sendJSON(res, 201, { url });
+    } catch (e) {
+      const msg = /R2 no configurado/.test(String((e && e.message) || '')) 
+        ? 'Almacén de fotos no configurado (faltan variables R2_* en Railway)'
+        : 'No se pudo subir la foto: ' + ((e && e.message) || 'error');
+      return sendJSON(res, 503, { error: msg });
+    }
+  }
+  // Migración de lo ya guardado: sube a R2 cada base64 de productos y marcas
+  // y lo reemplaza por su URL. Idempotente (lo que ya es URL se salta) y solo
+  // reemplaza lo verificado en R2. Con {soloInforme:true} solo cuenta.
+  if (pathname === '/api/migrar-fotos-r2' && req.method === 'POST') {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const u = userByToken(getToken(req));
+    if (!u || u.rol !== 'SUPERADMIN') return sendJSON(res, 403, { error: 'Solo SUPERADMIN' });
+    try {
+      const r2 = require('./r2');
+      if (!r2.listo()) return sendJSON(res, 503, { error: 'R2 no configurado (faltan variables R2_* en Railway)' });
+      const esUrl = (s) => /^https?:\/\/[^ ]{1,2000}$/.test(String(s || ''));
+      const rep = { productos: 0, imagenesProd: 0, marcas: 0, fallos: [], bytesAntes: 0, bytesDespues: 0 };
+      const lista = loadProductos();
+      for (const p of lista) {
+        if (!Array.isArray(p.images)) continue;
+        for (let i = 0; i < p.images.length; i++) {
+          const s = String(p.images[i] || '');
+          if (!s) continue;
+          if (esUrl(s)) { rep.bytesDespues += s.length; continue; }
+          rep.bytesAntes += s.length;
+          if (body.soloInforme) continue;
+          try {
+            const url = await r2.subirFoto(s, 'productos');
+            p.images[i] = url;
+            rep.bytesDespues += url.length;
+            rep.imagenesProd++;
+          } catch (e) { rep.fallos.push(p.id + ': ' + ((e && e.message) || 'error')); }
+        }
+        rep.productos++;
+      }
+      const over = loadMarcas();
+      for (const code of Object.keys(over)) {
+        const s = String((over[code] && over[code].image) || '');
+        if (!s || esUrl(s)) continue;
+        rep.bytesAntes += s.length;
+        if (body.soloInforme) continue;
+        try {
+          over[code].image = await r2.subirFoto(s, 'marcas');
+          rep.bytesDespues += over[code].image.length;
+          rep.marcas++;
+        } catch (e) { rep.fallos.push('marca ' + code + ': ' + ((e && e.message) || 'error')); }
+      }
+      if (!body.soloInforme) {
+        persistProductos(lista);
+        saveMarcas(over);
+        logAudit(req, { modulo: 'catalogo', evento: 'migracion-r2', detalle: rep.imagenesProd + ' fotos de productos y ' + rep.marcas + ' logos a R2' });
+      }
+      return sendJSON(res, 200, { ok: true, soloInforme: !!body.soloInforme, ...rep });
+    } catch (e) {
+      return sendJSON(res, 500, { error: 'Migración falló: ' + ((e && e.message) || 'error') });
+    }
+  }
+  // VACUUM de Postgres (solo SUPERADMIN). La basura histórica (tuplas muertas
+  // de la época de reescrituras completas) solo se libera así. FULL reescribe
+  // las tablas y baja el % del volumen, pero BLOQUEA mientras corre: úsalo con
+  // poco tráfico. Sin full solo marca espacio reutilizable.
+  if (pathname === '/api/admin/vacuum' && req.method === 'POST') {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const u = userByToken(getToken(req));
+    if (!u || u.rol !== 'SUPERADMIN') return sendJSON(res, 403, { error: 'Solo SUPERADMIN' });
+    if (!DB_MODE) return sendJSON(res, 400, { error: 'Sin Postgres (modo local)' });
+    try {
+      const pool = db.getPool();
+      const t0 = Date.now();
+      const a = await pool.query('SELECT pg_database_size(current_database()) AS b');
+      const antes = Number(a.rows[0].b) || 0;
+      await pool.query(body.full === true ? 'VACUUM FULL' : 'VACUUM');
+      const d = await pool.query('SELECT pg_database_size(current_database()) AS b');
+      const despues = Number(d.rows[0].b) || 0;
+      logAudit(req, { modulo: 'sistema', evento: body.full === true ? 'vacuum-full' : 'vacuum', detalle: Math.round(antes / 1048576) + 'MB → ' + Math.round(despues / 1048576) + 'MB' });
+      return sendJSON(res, 200, {
+        ok: true, full: body.full === true,
+        antesMB: Math.round(antes / 1048576 * 10) / 10,
+        despuesMB: Math.round(despues / 1048576 * 10) / 10,
+        ms: Date.now() - t0,
+      });
+    } catch (e) {
+      return sendJSON(res, 500, { error: 'VACUUM falló: ' + ((e && e.message) || 'error') });
+    }
   }
 
   // ----- categorías del catálogo (imagen + etiqueta; las crea/edita el staff) -----
@@ -2531,7 +2657,7 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
     const u = userByToken(getToken(req));
     if (!u || (u.rol !== 'ADMIN' && u.rol !== 'SUPERADMIN')) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
     const code = String(decodeURIComponent(mCat[1] || '')).trim().slice(0, 60) || 'general';
-    if (body.image && String(body.image).length > 2000000) return sendJSON(res, 400, { error: 'Imagen muy pesada (máx 2MB)' });
+    if (body.image && !imagenCatalogoOk(body.image)) return sendJSON(res, 400, { error: 'El logo debe subirse primero (el catálogo ya no guarda base64 pesado en la base)' });
     const over = loadCategorias();
     over[code] = {
       label: String(body.label || (over[code] && over[code].label) || code).slice(0, 120),
