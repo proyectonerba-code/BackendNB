@@ -608,6 +608,16 @@ async function callGroq({ question, history, catalog, area, picks, user }, reint
   );
   let response;
   try {
+    const body = {
+      model: GROQ_MODEL,
+      messages,
+      temperature: 0.25,
+      max_tokens: 700,
+    };
+    // gpt-oss NO soporta response_format: json_object
+    if (!GROQ_MODEL.startsWith('openai/')) {
+      body.response_format = { type: 'json_object' };
+    }
     response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -619,7 +629,7 @@ async function callGroq({ question, history, catalog, area, picks, user }, reint
         messages,
         temperature: 0.25,
         max_tokens: 700,
-        response_format: { type: 'json_object' },
+        ...(!GROQ_MODEL.startsWith('openai/') ? { response_format: { type: 'json_object' } } : {}),
       }),
     });
   } catch (e) {
