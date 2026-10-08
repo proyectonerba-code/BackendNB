@@ -23,7 +23,10 @@ const API_KEY = String(process.env.GEMINI_API_KEY || '').trim();
 // Sin tarjeta en su nivel gratis; la llave se saca en console.groq.com/keys.
 // Si no hay llave, el chat sigue igual que antes solo con Gemini.
 const GROQ_KEY = String(process.env.GROQ_API_KEY || '').trim();
-const GROQ_MODEL = String(process.env.GROQ_MODEL || 'llama-3.3-70b-versatile').trim();
+// gpt-oss-20b: producción, rapidísimo (1000 t/s) y gratis. OJO: llama-3.3-70b
+// pasó a Enterprise (la llave gratis responde 404 con él), por eso ya no es
+// el default aunque sea más famoso.
+const GROQ_MODEL = String(process.env.GROQ_MODEL || 'openai/gpt-oss-20b').trim();
 // Si la llave es inválida o el modelo se retiró, no tiene caso intentarlo en
 // cada mensaje: se marca muerto y se va directo a Gemini.
 let GROQ_MUERTO = false;
