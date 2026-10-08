@@ -3081,7 +3081,8 @@ async function start() {
   try {
     await nerbot.init({ db, dbMode: DB_MODE });
     console.log('NerBot: modelo ' + nerbot.model + ' | staff ' + (nerbot.staff ? 'si' : 'no') +
-      (nerbot.configured ? '' : ' | SIN GEMINI_API_KEY: respondera con el fallback'));
+      (nerbot.configured ? '' : ' | SIN GEMINI_API_KEY: respondera con el fallback') +
+      (nerbot.groqConfigured ? ' | Groq: ' + nerbot.groqModel : ' | sin GROQ_API_KEY'));
   } catch (e) {
     console.log('Aviso NerBot: ' + e.message + '. El chat usará fallback seguro.');
   }

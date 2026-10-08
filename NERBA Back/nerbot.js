@@ -19,6 +19,14 @@ const THINKING_LEVEL = ['off', 'budget', 'low', 'medium', 'high'].includes(Strin
   ? String(process.env.GEMINI_THINKING_LEVEL || 'budget').toLowerCase()
   : 'budget';
 const API_KEY = String(process.env.GEMINI_API_KEY || '').trim();
+// Groq (gratis, rapidísimo, bueno en español): primer proveedor si hay llave.
+// Sin tarjeta en su nivel gratis; la llave se saca en console.groq.com/keys.
+// Si no hay llave, el chat sigue igual que antes solo con Gemini.
+const GROQ_KEY = String(process.env.GROQ_API_KEY || '').trim();
+const GROQ_MODEL = String(process.env.GROQ_MODEL || 'llama-3.3-70b-versatile').trim();
+// Si la llave es inválida o el modelo se retiró, no tiene caso intentarlo en
+// cada mensaje: se marca muerto y se va directo a Gemini.
+let GROQ_MUERTO = false;
 const MODELOS_ALT = ['gemini-2.0-flash', 'gemini-flash-latest', 'gemini-1.5-flash'];
 // Google retira modelos por llave/region con el tiempo (2.5-flash y 2.0-flash
 // ya no existen para esta llave). Averiguarlo cuesta una llamada fallida cada
@@ -388,17 +396,27 @@ const FALLBACK = {
   ],
 };
 
+// Nombres legibles para el fallback: máximo 2, unidos con " o ". Antes se
+// pegaba el arreglo crudo (coma intermedia) con los títulos en mayúsculas tal
+// cual vienen del catálogo y salía el promocional ilegible.
+function nombresPicks(picks, max) {
+  const names = (picks || []).slice(0, max || 2)
+    .map((p) => String((p && p.title) || '').trim()).filter(Boolean);
+  if (names.length <= 1) return names.join('');
+  return names.slice(0, -1).join(', ') + ' o ' + names[names.length - 1];
+}
+
 function fallbackReply(question, area, picks, history) {
   const grupo = FALLBACK[area] || FALLBACK.GENERAL;
   const turno = (history || []).filter((m) => m.role === 'user').length;
   const aviso = FALLBACK.aviso[turno % FALLBACK.aviso.length];
   const linea = grupo[turno % grupo.length];
-  const names = picks.slice(0, 3).map((p) => p.title).filter(Boolean);
-  return aviso + linea(names);
+  return aviso + linea(nombresPicks(picks, 2));
 }
 
-async function callGemini({question, history, catalog, area, picks, user}) {
-  if (!API_KEY) throw new Error('GEMINI_API_KEY no configurada');
+// El prompt se arma una sola vez y lo usan ambos proveedores (Gemini y
+// Groq): mismo sistema, mismo historial, mismo catálogo.
+function armaPrompt({ question, history, catalog, area, picks, user }) {
   const catalogBlock = JSON.stringify(picks.length ? picks : catalog.slice(0, 40));
   const historyBlock = history.map((m) => ({
     role: m.role === 'model' ? 'model' : 'user',
@@ -459,6 +477,13 @@ async function callGemini({question, history, catalog, area, picks, user}) {
   const ultimo = contents[contents.length - 1];
   if (ultimo && ultimo.role === 'user') ultimo.parts[0].text += '\n\n' + actual.parts[0].text;
   else contents.push(actual);
+
+  return { systemText, schema, contents };
+}
+
+async function callGemini({ question, history, catalog, area, picks, user }) {
+  if (!API_KEY) throw new Error('GEMINI_API_KEY no configurada');
+  const { systemText, schema, contents } = armaPrompt({ question, history, catalog, area, picks, user });
 
   // Candidatos en orden: el configurado y despues los de reserva. indice
   // avanza solo cuando un modelo da 404 (retirado para esta llave); los
@@ -558,6 +583,78 @@ async function callGemini({question, history, catalog, area, picks, user}) {
   }
 }
 
+// Groq: mismo prompt y mismo JSON de respuesta que Gemini, por su API
+// compatible con OpenAI. Si la llave es inválida o el modelo se retiró (401
+// o 404), se marca muerto para no intentarlo en cada mensaje.
+async function callGroq({ question, history, catalog, area, picks, user }) {
+  if (!GROQ_KEY) throw new Error('GROQ_API_KEY no configurada');
+  if (GROQ_MUERTO) throw new Error('Groq marcado no disponible');
+  const { systemText, contents } = armaPrompt({ question, history, catalog, area, picks, user });
+  // contents viene en formato Gemini ({role, parts:[{text}]}): se aplana al
+  // formato OpenAI conservando el orden ya validado (user/model alternados).
+  const messages = [{ role: 'system', content: systemText }].concat(
+    contents.map((m) => ({
+      role: m.role === 'model' ? 'assistant' : 'user',
+      content: m.parts.map((p) => p.text).join('\n'),
+    }))
+  );
+  let response;
+  try {
+    response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + GROQ_KEY,
+      },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        messages,
+        temperature: 0.25,
+        max_tokens: 700,
+        response_format: { type: 'json_object' },
+      }),
+    });
+  } catch (e) {
+    throw new Error('Groq sin respuesta: ' + ((e && e.message) || 'red'));
+  }
+  const raw = await response.text();
+  if (response.status === 401 || response.status === 404) {
+    GROQ_MUERTO = true;
+    console.log('NerBot: Groq no disponible (' + response.status + '), se sigue solo con Gemini.');
+    throw new Error('Groq ' + response.status + ': llave o modelo no válido');
+  }
+  if (response.status === 429) {
+    const espera = pausaCuotaSeg || 30;
+    pausaCuotaSeg = Math.min(300, Math.round(espera * 1.5));
+    pausaPorCuota = Date.now() + espera * 1000;
+    console.log('NerBot: cuota de Groq agotada. Pausa ' + Math.round((pausaPorCuota - Date.now()) / 1000) + 's.');
+    throw new Error('Groq 429: cuota agotada');
+  }
+  if (!response.ok) {
+    let detail = '';
+    try {
+      const err = JSON.parse(raw);
+      detail = cleanText(err && err.error && err.error.message, 300);
+    } catch {}
+    throw new Error('Groq ' + response.status + (detail ? ': ' + detail : ''));
+  }
+  let payload;
+  try { payload = JSON.parse(raw); } catch { throw new Error('Respuesta inválida de Groq'); }
+  const text = cleanText(
+    payload && payload.choices && payload.choices[0] && payload.choices[0].message
+      ? payload.choices[0].message.content : '', MAX_REPLY);
+  if (!text) throw new Error('Groq no devolvió contenido');
+  try {
+    return JSON.parse(text);
+  } catch {
+    const m = text.match(/\{[\s\S]*\}/);
+    if (m) {
+      try { return JSON.parse(m[0]); } catch {}
+    }
+    throw new Error('Groq devolvió JSON inválido');
+  }
+}
+
 function normalizeAnswer(out, area, picks) {
   const reply = cleanText(out && out.reply, MAX_REPLY);
   const finalArea = AREA_NAMES[out && out.area] ? out.area : area;
@@ -629,8 +726,8 @@ async function message({sessionId, user, question, catalog}) {
   if (sinHistorial) {
     const guardado = cacheGet(clave);
     if (guardado) {
-      answer = guardado;
-      source = 'cache';
+      answer = guardado.a;
+      source = guardado.p || 'cache';
     }
   }
 
@@ -642,9 +739,25 @@ async function message({sessionId, user, question, catalog}) {
   }
 
   if (!answer) {
-    // Una sola llamada por clave: si tres personas preguntan lo mismo al mismo
-    // tiempo, esperan la misma promesa en vez de disparar tres requests.
+    // Cadena de proveedores: Groq primero (gratis y rápido) y Gemini después.
+    // Si ambos fallan, el fallback local. Se devuelve empaquetado para saber
+    // de dónde salió la respuesta (source) sin adivinar por el intent.
     const tarea = async () => {
+      if (GROQ_KEY && !GROQ_MUERTO) {
+        try {
+          const generated = await callGroq({
+            question: cleanQuestion,
+            history,
+            catalog: products,
+            area: serverArea,
+            picks,
+            user,
+          });
+          return { answer: normalizeAnswer(generated, serverArea, picks), prov: 'groq' };
+        } catch (e) {
+          console.log('NerBot Groq: ' + e.message);
+        }
+      }
       try {
         const generated = await callGemini({
           question: cleanQuestion,
@@ -654,28 +767,31 @@ async function message({sessionId, user, question, catalog}) {
           picks,
           user,
         });
-        return normalizeAnswer(generated, serverArea, picks);
+        return { answer: normalizeAnswer(generated, serverArea, picks), prov: 'gemini' };
       } catch (e) {
         console.log('NerBot Gemini: ' + e.message);
-        return normalizeAnswer({ reply: fallbackReply(cleanQuestion, serverArea, picks, history), area: serverArea, intent: 'fallback', confidence: 0.2, needs_human: true, suggestions: [], product_ids: picks.map((p) => p.id).slice(0, 6) }, serverArea, picks);
+        return { answer: normalizeAnswer({ reply: fallbackReply(cleanQuestion, serverArea, picks, history), area: serverArea, intent: 'fallback', confidence: 0.2, needs_human: true, suggestions: [], product_ids: picks.map((p) => p.id).slice(0, 6) }, serverArea, picks), prov: null };
       }
     };
 
     if (sinHistorial) {
       if (!EN_VUELO.has(clave)) {
-        EN_VUELO.set(clave, tarea().then((r) => {
-          // No se cachean las respuestas de emergencia: si Gemini se recupera,
-          // la siguiente pregunta debe recibir la respuesta real.
-          if (r.intent !== 'fallback' && r.intent !== 'cuota') cacheSet(clave, r);
+        EN_VUELO.set(clave, tarea().then((paq) => {
+          // No se cachean las respuestas de emergencia: si el proveedor se
+          // recupera, la siguiente pregunta debe recibir la respuesta real.
+          if (paq.answer.intent !== 'fallback' && paq.answer.intent !== 'cuota') cacheSet(clave, paq);
           EN_VUELO.delete(clave);
-          return r;
+          return paq;
         }).catch((e) => { EN_VUELO.delete(clave); throw e; }));
       }
-      answer = await EN_VUELO.get(clave);
+      const hecho = await EN_VUELO.get(clave);
+      answer = hecho.answer;
+      source = hecho.prov || 'fallback';
     } else {
-      answer = await tarea();
+      const hecho = await tarea();
+      answer = hecho.answer;
+      source = hecho.prov || 'fallback';
     }
-    if (answer && answer.intent === 'fallback') source = 'fallback';
   }
 
   const finalReply = answer.reply;
@@ -736,6 +852,8 @@ module.exports = {
   thinkingLevel: THINKING_LEVEL,
   staff: NERBOT_STAFF,
   configured: !!API_KEY,
+  groqModel: GROQ_MODEL,
+  groqConfigured: !!GROQ_KEY,
   cacheSize: CACHE.size,
   limpiarCache() { CACHE.clear(); },
 };
