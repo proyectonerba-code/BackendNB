@@ -2654,6 +2654,7 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
           catch (e) { ajustes[n] = 'sin-permiso'; }
         }
         // Duh del PGDATA a un nivel: por si lo gordo no es WAL sino otra cosa.
+        // + transacciones viejas abiertas (retienen WAL aunque haya checkpoint).
         try {
           const tam = async (ruta) => {
             let st = null;
@@ -2672,6 +2673,20 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
           const du = [];
           for (const d of toplevel) du.push({ dir: d, tam: fm(await tam(d)) });
           ajustes.du = du;
+          try {
+            const tx = await poolW.query(
+              "SELECT pid, state, COALESCE(now()-xact_start, now()-query_start) AS lleva, left(query,80) AS q " +
+              'FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND xact_start IS NOT NULL ' +
+              "AND now()-xact_start > interval '5 minutes' ORDER BY xact_start LIMIT 10"
+            );
+            ajustes.txViejas = tx.rows;
+          } catch (e) { ajustes.txViejas = 'sin-permiso'; }
+          try {
+            const w = await poolW.query('SELECT name FROM pg_ls_waldir() ORDER BY name');
+            const ns = w.rows.map((r) => r.name);
+            ajustes.walArchivos = ns.length;
+            ajustes.walRango = ns.length ? (ns[0] + ' .. ' + ns[ns.length - 1]) : 'vacio';
+          } catch (e) { ajustes.walArchivos = 'sin-permiso'; }
         } catch (e) { ajustes.du = 'ERR: ' + String((e && e.message) || e).slice(0, 200); }
         if (body.ajustarWal) {
           const v = String(body.ajustarWal).slice(0, 16);
