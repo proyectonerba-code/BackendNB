@@ -612,7 +612,7 @@ async function callGroq({ question, history, catalog, area, picks, user }, reint
       model: GROQ_MODEL,
       messages,
       temperature: 0.25,
-      max_tokens: 700,
+      max_tokens: 2000,
     };
     // gpt-oss NO soporta response_format: json_object
     if (!GROQ_MODEL.startsWith('openai/')) {
@@ -628,7 +628,7 @@ async function callGroq({ question, history, catalog, area, picks, user }, reint
         model: GROQ_MODEL,
         messages,
         temperature: 0.25,
-        max_tokens: 700,
+        max_tokens: 2000,
         ...(!GROQ_MODEL.startsWith('openai/') ? { response_format: { type: 'json_object' } } : {}),
       }),
     });
