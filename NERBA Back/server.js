@@ -2595,6 +2595,19 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
       const t0 = Date.now();
       const a = await pool.query('SELECT pg_database_size(current_database()) AS b');
       const antes = Number(a.rows[0].b) || 0;
+      // Radiografía por tabla + WAL, para saber qué está gordo antes de actuar.
+      let tablas = [], walMB = null;
+      try {
+        const t = await pool.query(
+          "SELECT tablename AS n, pg_total_relation_size('public.' || quote_ident(tablename)) AS b " +
+          'FROM pg_tables WHERE schemaname = \'public\' ORDER BY b DESC'
+        );
+        tablas = t.rows.map((r) => ({ tabla: r.n, mb: Math.round(Number(r.b) / 1048576 * 10) / 10 }));
+      } catch (e) { tablas = [{ tabla: 'sin-permiso', mb: 0 }]; }
+      try {
+        const w = await pool.query("SELECT COALESCE(SUM(size),0) AS b FROM pg_ls_waldir()");
+        walMB = Math.round(Number(w.rows[0].b) / 1048576 * 10) / 10;
+      } catch (e) { walMB = null; }
       await pool.query(body.full === true ? 'VACUUM FULL' : 'VACUUM');
       const d = await pool.query('SELECT pg_database_size(current_database()) AS b');
       const despues = Number(d.rows[0].b) || 0;
@@ -2603,6 +2616,7 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
         ok: true, full: body.full === true,
         antesMB: Math.round(antes / 1048576 * 10) / 10,
         despuesMB: Math.round(despues / 1048576 * 10) / 10,
+        tablas, walMB,
         ms: Date.now() - t0,
       });
     } catch (e) {
