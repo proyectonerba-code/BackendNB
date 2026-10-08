@@ -2596,7 +2596,20 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
       const a = await pool.query('SELECT pg_database_size(current_database()) AS b');
       const antes = Number(a.rows[0].b) || 0;
       // Radiografía por tabla + WAL, para saber qué está gordo antes de actuar.
-      let tablas = [], walMB = null;
+      // El WAL retenido (slots de replicación muertos, falta de checkpoint) es
+      // la causa típica de un volumen lleno con una base pequeña.
+      let tablas = [], walMB = null, slots = [];
+      try {
+        const s = await pool.query('SELECT slot_name AS n, active AS a, pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS retenido FROM pg_replication_slots');
+        slots = s.rows;
+      } catch (e) { slots = []; }
+      if (body.soltarSlot) {
+        const nombre = String(body.soltarSlot).slice(0, 100);
+        const hay = slots.find((x) => x.n === nombre && !x.a);
+        if (!hay) return sendJSON(res, 400, { error: 'Slot no existe o sigue activo (no se toca)' });
+        await pool.query('SELECT pg_drop_replication_slot($1)', [nombre]);
+        logAudit(req, { modulo: 'sistema', evento: 'drop-slot', detalle: nombre });
+      }
       try {
         const t = await pool.query(
           "SELECT tablename AS n, pg_total_relation_size('public.' || quote_ident(tablename)) AS b " +
@@ -2608,6 +2621,8 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
         const w = await pool.query("SELECT COALESCE(SUM(size),0) AS b FROM pg_ls_waldir()");
         walMB = Math.round(Number(w.rows[0].b) / 1048576 * 10) / 10;
       } catch (e) { walMB = null; }
+      // Checkpoint primero: deja reciclar segmentos viejos sin bloquear nada.
+      try { await pool.query('CHECKPOINT'); } catch (e) {}
       await pool.query(body.full === true ? 'VACUUM FULL' : 'VACUUM');
       const d = await pool.query('SELECT pg_database_size(current_database()) AS b');
       const despues = Number(d.rows[0].b) || 0;
@@ -2616,7 +2631,7 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
         ok: true, full: body.full === true,
         antesMB: Math.round(antes / 1048576 * 10) / 10,
         despuesMB: Math.round(despues / 1048576 * 10) / 10,
-        tablas, walMB,
+        tablas, walMB, slots,
         ms: Date.now() - t0,
       });
     } catch (e) {
