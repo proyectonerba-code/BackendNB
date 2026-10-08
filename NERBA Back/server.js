@@ -2590,6 +2590,33 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
     const u = userByToken(getToken(req));
     if (!u || u.rol !== 'SUPERADMIN') return sendJSON(res, 403, { error: 'Solo SUPERADMIN' });
     if (!DB_MODE) return sendJSON(res, 400, { error: 'Sin Postgres (modo local)' });
+    // Lector y ajuste de WAL (aquí dentro: ya pasó el candado SUPERADMIN).
+    // El volumen puede estar lleno de WAL retenido aunque la base sea pequeña:
+    // max_wal_size alto deja el alto histórico. Bajarlo recicla segmentos.
+    if (body.verAjustes || body.ajustarWal) {
+      try {
+        const poolW = db.getPool();
+        const ajustes = {};
+        for (const n of ['max_wal_size', 'min_wal_size', 'wal_keep_size', 'archive_mode', 'checkpoint_timeout']) {
+          try { ajustes[n] = (await poolW.query('SHOW ' + n)).rows[0][n]; }
+          catch (e) { ajustes[n] = 'sin-permiso'; }
+        }
+        if (body.ajustarWal) {
+          const v = String(body.ajustarWal).slice(0, 16);
+          if (!/^\d+(MB|GB)$/i.test(v)) return sendJSON(res, 400, { error: 'Formato: número + MB/GB (ej. 128MB)' });
+          await poolW.query('ALTER SYSTEM SET max_wal_size = ' + "'" + v.replace(/'/g, '') + "'");
+          await poolW.query('SELECT pg_reload_conf()');
+          try { await poolW.query('CHECKPOINT'); } catch (e) {}
+          logAudit(req, { modulo: 'sistema', evento: 'ajuste-wal', detalle: 'max_wal_size=' + v });
+          for (const n of ['max_wal_size', 'min_wal_size']) {
+            try { ajustes[n] = (await poolW.query('SHOW ' + n)).rows[0][n]; } catch (e) {}
+          }
+        }
+        return sendJSON(res, 200, { ok: true, ajustes });
+      } catch (e) {
+        return sendJSON(res, 500, { error: 'Ajuste WAL falló: ' + ((e && e.message) || 'error') });
+      }
+    }
     try {
       const pool = db.getPool();
       const t0 = Date.now();
