@@ -2310,6 +2310,18 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
     return sendJSON(res, 200, lista[idx]);
   }
 
+  // Candado de espacio: si la base pasa de 150MB y vienen fotos en base64
+  // (sin R2), se rechaza antes de guardar. Sin esto, subir sin R2 volvería a
+  // llenar el volumen hasta el 100% y ahí fallan TODAS las escrituras.
+  async function baseLlenaParaBase64(images) {
+    const arr = Array.isArray(images) ? images : [];
+    const traeBase64 = arr.some((s) => /^data:image\//.test(String(s || '')));
+    if (!traeBase64 || !DB_MODE) return false;
+    try {
+      const r = await db.getPool().query('SELECT pg_database_size(current_database()) AS b');
+      return Number(r.rows[0].b) > 150 * 1048576;
+    } catch (e) { return false; }
+  }
   // ----- catalogo de productos (gestionado por staff, visible en index y catalogo) -----
   const productosFile = path.join(DATA_DIR, 'productos.json');
   const productosSeed = path.join(__dirname, 'productos.seed.json');
@@ -2425,6 +2437,9 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
     if (!u || !isStaff(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
     if (!body.title || !String(body.title).trim()) return sendJSON(res, 400, { error: 'El titulo es obligatorio' });
     if (imagenesCatalogoMal(body.images)) return sendJSON(res, 400, { error: 'Las fotos deben subirse primero (el catálogo ya no guarda base64 pesado en la base)' });
+    // Sin R2 se permite base64 chico, pero con la base vigilada: si pasa de
+    // 150MB se rechaza para no llegar al 100% del volumen (ahí falla todo).
+    if (await baseLlenaParaBase64(body.images)) return sendJSON(res, 400, { error: 'Base casi llena (150MB): configura R2 para seguir subiendo fotos' });
     const lista = loadProductos();
     const base = String(body.title).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'producto';
@@ -2483,6 +2498,7 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
     }
     const upd = cleanProduct({ ...lista[idx], ...body, electronico: body.electronico !== undefined ? body.electronico : lista[idx].electronico });
     if (body.images !== undefined && imagenesCatalogoMal(body.images)) return sendJSON(res, 400, { error: 'Las fotos deben subirse primero (el catálogo ya no guarda base64 pesado en la base)' });
+    if (body.images !== undefined && await baseLlenaParaBase64(body.images)) return sendJSON(res, 400, { error: 'Base casi llena (150MB): configura R2 para seguir subiendo fotos' });
     if (!upd.title) return sendJSON(res, 400, { error: 'El titulo es obligatorio' });
     lista[idx] = { id: lista[idx].id, ...upd };
     persistProductos(lista);
@@ -2543,6 +2559,7 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
       return sendJSON(res, 200, { ok: true });
     }
     if (body.image && !imagenCatalogoOk(body.image)) return sendJSON(res, 400, { error: 'El logo debe subirse primero (el catálogo ya no guarda base64 pesado en la base)' });
+    if (body.image && await baseLlenaParaBase64([body.image])) return sendJSON(res, 400, { error: 'Base casi llena (150MB): configura R2 para seguir subiendo fotos' });
     over[code] = {
       label: String(body.label || (over[code] && over[code].label) || code).slice(0, 80),
       image: String(body.image || '').slice(0, 2000000),
@@ -2827,6 +2844,7 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
     if (!u || (u.rol !== 'ADMIN' && u.rol !== 'SUPERADMIN')) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
     const code = String(decodeURIComponent(mCat[1] || '')).trim().slice(0, 60) || 'general';
     if (body.image && !imagenCatalogoOk(body.image)) return sendJSON(res, 400, { error: 'El logo debe subirse primero (el catálogo ya no guarda base64 pesado en la base)' });
+    if (body.image && await baseLlenaParaBase64([body.image])) return sendJSON(res, 400, { error: 'Base casi llena (150MB): configura R2 para seguir subiendo fotos' });
     const over = loadCategorias();
     over[code] = {
       label: String(body.label || (over[code] && over[code].label) || code).slice(0, 120),
