@@ -2714,7 +2714,7 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
         // Duh del PGDATA a un nivel: por si lo gordo no es WAL sino otra cosa.
         try {
           const tam = async (ruta) => {
-            const esDir = (await poolW.query('SELECT pg_isdir($1) AS d', [ruta])).rows[0].d;
+            const esDir = (await poolW.query('SELECT pg_isdir($1::text) AS d', [ruta])).rows[0].d;
             if (!esDir) {
               try { return Number((await poolW.query('SELECT (pg_stat_file($1)).size AS s', [ruta])).rows[0].s) || 0; }
               catch (e) { return 0; }
