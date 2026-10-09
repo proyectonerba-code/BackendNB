@@ -3037,7 +3037,21 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
     return false;
   }
   function avisoParaTi(a) {
-    return { id: a.id, titulo: a.titulo, mensaje: a.mensaje, link: a.link || '#', creada: a.creada, expira: a.expira || null };
+    return { id: a.id, titulo: a.titulo, mensaje: a.mensaje, imagen: a.imagen || '', link: a.link || '#', creada: a.creada, expira: a.expira || null };
+  }
+  // "Dirigido a" del modal rápido (TODOS/CLIENTE/ADMIN/.../STAFF) -> destino.
+  function destinoDesdePara(para) {
+    const p = String(para || 'TODOS').toUpperCase();
+    if (p === 'TODOS') return { tipo: 'todos' };
+    if (p === 'STAFF') return { tipo: 'roles', roles: ['ADMIN', 'SUPERADMIN', 'PRODUCTOS_ELECTRONICOS', 'PROYECTOS_ESPECIALES'] };
+    if (ROLES_AVISOS.indexOf(p) !== -1) return { tipo: 'roles', roles: [p] };
+    return null;
+  }
+  function imagenAvisoOk(s) {
+    s = String(s || '').trim();
+    if (!s) return true;
+    if (/^https:\/\/[^ ]{1,2000}$/.test(s)) return true;
+    return /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(s) && s.length <= 500 * 1024;
   }
   if (pathname === '/api/avisos' && req.method === 'GET') {
     const u = userByToken(getToken(req));
@@ -3057,10 +3071,30 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
     const u = userByToken(getToken(req));
     if (!u) return sendJSON(res, 401, { error: 'Inicia sesion para publicar avisos' });
     if (!puedeAvisar(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
+    // Compatibilidad con la primera versión del modal, que mandaba el aviso
+    // anidado ({aviso:{titulo,texto,img,para}}). Se normaliza al formato actual.
+    if (body && body.aviso && typeof body.aviso === 'object' && !body.titulo) {
+      const anid = body.aviso;
+      body = {
+        titulo: anid.titulo,
+        mensaje: anid.mensaje || anid.texto,
+        imagen: anid.imagen || anid.img,
+        link: anid.link,
+        expira: anid.expira,
+        destino: anid.destino || (anid.para ? { tipo: 'legacy', para: anid.para } : undefined),
+      };
+    }
+    if (body && body.destino && body.destino.tipo === 'legacy') {
+      body.destino = destinoDesdePara(body.destino.para) || { tipo: 'todos' };
+    }
     const titulo = String(body.titulo || '').trim().slice(0, 120);
     const mensaje = String(body.mensaje || '').trim().slice(0, 500);
     if (!titulo) return sendJSON(res, 400, { error: 'El titulo es obligatorio' });
     if (!mensaje) return sendJSON(res, 400, { error: 'El mensaje es obligatorio' });
+    const imagen = String(body.imagen || '').trim();
+    if (!imagenAvisoOk(imagen)) {
+      return sendJSON(res, 400, { error: 'La imagen debe ser URL https o JPG/PNG de máximo 500KB' });
+    }
     let link = String(body.link || '').trim().slice(0, 200);
     // Solo rutas internas: nada de javascript: ni paginas externas.
     if (link && !/^\/[A-Za-z0-9/_\-.?#=&%]*$/.test(link)) {
@@ -3091,7 +3125,7 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
     const existen = loadAvisos();
     while (existen.some((x) => x && x.id === id)) id += Math.floor(Math.random() * 36).toString(36).toUpperCase();
     const aviso = {
-      id, titulo, mensaje, link: link || '#', destino,
+      id, titulo, mensaje, imagen: imagen || '', link: link || '#', destino,
       creada: new Date().toISOString(), expira, activa: true,
       creadaPor: { email: u.email, nombre: u.nombre, rol: u.rol },
     };
@@ -3135,6 +3169,13 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
         return sendJSON(res, 400, { error: 'El enlace debe ser una ruta interna' });
       }
       a.link = l || '#';
+    }
+    if (body.imagen !== undefined) {
+      const im = String(body.imagen || '').trim();
+      if (!imagenAvisoOk(im)) {
+        return sendJSON(res, 400, { error: 'La imagen debe ser URL https o JPG/PNG de máximo 500KB' });
+      }
+      a.imagen = im;
     }
     if (body.activa !== undefined) a.activa = body.activa === true || String(body.activa).toLowerCase() === 'true';
     if (body.expira !== undefined) {
