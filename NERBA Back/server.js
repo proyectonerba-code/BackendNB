@@ -81,7 +81,7 @@ const sessionsFile = path.join(DATA_DIR, 'sesiones.json');
 let users = {};      // email -> { nombre, email, telefono, passHash, direccion, rol, createdAt }
 let sessions = {};   // token -> { email, expiresAt }
 let quotes = {};     // folio -> cotizacion
-let folioSeq = 8850;
+// Los avisos viven mas abajo (loadAvisos / cAvisos), no en una variable global.
 // --- Folios: una serie por tipo de trabajo ---------------------------------
 // Antes todas las cotizaciones compartian un solo contador (COT-8850-2026),
 // asi que una venta de equipo y una instalacion quedaban con numeros mezclados.
@@ -234,8 +234,6 @@ for (const q of quotesArr) {
   // Las series nuevas (COT-INS-0001-2026) llevan su propia cuenta: se recorren
   // los folios guardados para no repetir numero cuando el servidor arranca.
   tomaFolioExistente(q.folio);
-  const m = /^COT-(\d+)-/.exec(q.folio || '');
-  if (m && parseInt(m[1], 10) >= folioSeq) folioSeq = parseInt(m[1], 10) + 1;
 }
 // Migración: el área se deriva del tipo (las electrónicas viejas entran a su zona).
 let migArea = false;
@@ -1618,7 +1616,22 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
   // cotizacion se colaba en la bandeja de ADMIN. Ahora el area sale de la misma
   // serie que decide el folio, para que las dos cosas no se contradigan.
   if (area === 'GENERAL' && serie !== 'GENERAL') area = serie;
-  const folio = folioSiguiente(serie, year);
+  let folio = folioSiguiente(serie, year);
+  // Red de seguridad: si el contador se desfaso (carga parcial de datos, restore
+  // de un respaldo viejo, dos instancias) el folio nuevo podria ser uno que ya
+  // existe, y guardarlo pisaria la cotizacion anterior. Se avanza al siguiente
+  // libre de la serie en vez de sobreescribir.
+  if (quotes[folio]) {
+    let n = folioSeqs[serie] || 0;
+    let libre = folio;
+    do {
+      n += 1;
+      libre = `COT-${SERIES_FOLIO[serie]}-${String(n).padStart(4, '0')}-${year}`;
+    } while (quotes[libre]);
+    folioSeqs[serie] = n;
+    folio = libre;
+    console.log('AVISO: el contador de ' + serie + ' estaba atrasado; el folio se asigno en ' + folio);
+  }
   // Se validan las fotos antes de armar el registro para poder reportar
   // cuantas entraron y cuantas quedaron guardadas.
   const saneadas = sanitizaFotos(body.fotos);
@@ -3284,12 +3297,10 @@ async function start() {
       if (Object.keys(s.quotes).length) {
         quotes = s.quotes;
         for (const q of Object.values(quotes)) {
-          const m = /^COT-(\d+)-/.exec(q.folio || '');
-          if (m && parseInt(m[1], 10) >= folioSeq) folioSeq = parseInt(m[1], 10) + 1;
-          // Tambien hay que retomar la cuenta de las series nuevas. Antes solo
-          // se(recuperaba la numerica vieja, asi que despues de cada redeploy
-          // la serie volvia a 0: la siguiente cita tomaba un folio ya usado y
-          // se cargaba encima de la cotizacion anterior sin avisar.
+          // Hay que retomar la cuenta de las series. Antes solo se recuperaba la
+          // numerica vieja, asi que despues de cada redeploy la serie volvia a
+          // 0: la siguiente cita tomaba un folio ya usado y se cargaba encima
+          // de la cotizacion anterior sin avisar.
           tomaFolioExistente(q.folio);
         }
       } else if (Object.keys(quotes).length) { db.wt(db.replaceAll('kv_quotes', quotes)); }
