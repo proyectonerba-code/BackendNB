@@ -1037,6 +1037,31 @@ function rateLimit(req, max = 30, windowMs = 60000) {
   if (e.n > max) return false;
   return true;
 }
+// Misma ventana pero por CLAVE (p. ej. por cuenta): un usuario en ráfaga no
+// le quita el turno a los demás que comparten IP o cuota de IA.
+function rateLimitKey(key, max = 30, windowMs = 60000) {
+  const now = Date.now();
+  const e = __rl.get(key);
+  if (!e || now > e.reset) { __rl.set(key, { n: 1, reset: now + windowMs }); return true; }
+  e.n++;
+  if (e.n > max) return false;
+  return true;
+}
+// Separación mínima entre mensajes del mismo usuario. Frena los disparos en
+// ráfaga (lo que quemaba la cuota gratis en segundos) sin molestar al ritmo
+// humano normal: nadie escribe y recibe respuesta en menos de 3s.
+const __chatGap = new Map(); // email -> timestamp del último mensaje aceptado
+function chatGapOk(key, minMs = 3000) {
+  const now = Date.now();
+  if (__chatGap.size > 2000) {
+    const corte = now - 600000;
+    for (const [k, v] of __chatGap) if (v < corte) __chatGap.delete(k);
+  }
+  const last = __chatGap.get(key) || 0;
+  if (now - last < minMs) return false;
+  __chatGap.set(key, now);
+  return true;
+}
 function getToken(req) {
   const auth = req.headers['authorization'] || '';
   if (auth.startsWith('Bearer ')) return auth.slice(7).trim();
@@ -1191,6 +1216,11 @@ async function manejar(req, res) {
     const u = userByToken(getToken(req));
     if (!u) return sendJSON(res, 401, { error: 'Inicia sesión para usar NerBot.' }, req);
     if (nerbotNo(u)) return sendJSON(res, 403, { error: 'NerBot está disponible para cuentas CLIENTE.' }, req);
+    // Freno por CUENTA (varios dispositivos comparten usuario y cuota de IA):
+    // 3s entre mensajes y tope 60/hora. No gasta IA cuando frena.
+    const ckChat = 'chat:' + String(u.email || '').toLowerCase();
+    if (!chatGapOk(ckChat)) return sendJSON(res, 429, { error: 'Vas muy rápido. Espera unos segundos e inténtalo de nuevo.' }, req);
+    if (!rateLimitKey(ckChat, 60, 3600000)) return sendJSON(res, 429, { error: 'Límite de consultas por hora alcanzado. Inténtalo más tarde.' }, req);
     try {
       const result = await nerbot.message({
         sessionId: body.session_id || body.sessionId,
