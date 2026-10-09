@@ -3211,6 +3211,8 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
       return sendJSON(res, 400, { error: 'La imagen debe ser URL https o JPG/PNG de máximo 500KB' });
     }
     let link = String(body.link || '').trim().slice(0, 200);
+    // "#" es "sin enlace" (lo manda el modal rápido): se guarda vacío.
+    if (link === '#') link = '';
     // Solo rutas internas: nada de javascript: ni paginas externas.
     if (link && !/^\/[A-Za-z0-9/_\-.?#=&%]*$/.test(link)) {
       return sendJSON(res, 400, { error: 'El enlace debe ser una ruta interna (p. ej. /cotizador.html)' });
@@ -3279,7 +3281,8 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
       a.mensaje = m;
     }
     if (body.link !== undefined) {
-      const l = String(body.link || '').trim().slice(0, 200);
+      let l = String(body.link || '').trim().slice(0, 200);
+      if (l === '#') l = '';
       if (l && !/^\/[A-Za-z0-9/_\-.?#=&%]*$/.test(l)) {
         return sendJSON(res, 400, { error: 'El enlace debe ser una ruta interna' });
       }
