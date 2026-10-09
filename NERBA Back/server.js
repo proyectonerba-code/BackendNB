@@ -51,6 +51,16 @@ const ORIGENES_PERMITIDOS = FRONTEND_ORIGINS.concat([
 // podia entrar a produccion como SUPERADMIN con la contrasena del seed.
 // Ahora solo se siembran si se pide de forma explicita con SEED_DEMO=1.
 const SEED_DEMO = process.env.SEED_DEMO === '1';
+// SuperAdmins reales de producción: correos separados por coma. En cada
+// arranque, las cuentas EXISTENTES con esos correos se promueven a SUPERADMIN
+// (y se reactivan). No crea cuentas, no degrada a nadie y no toca contraseñas:
+// la cuenta debe registrarse primero (o crearse desde el panel) y luego se
+// promueve sola al redesplegar. Así se retiran las demos sin riesgo de
+// quedarse sin acceso.
+const SUPERADMIN_EMAILS = String(process.env.SUPERADMIN_EMAILS || '')
+  .split(',')
+  .map((e) => e.trim().toLowerCase())
+  .filter((e) => e.indexOf('@') !== -1);
 // SERVE_STATIC=0: solo API (deploy separado: frontend en Netlify). Local: 1.
 const SERVE_STATIC = process.env.SERVE_STATIC !== '0';
 // Recuperacion de contrasena por correo: Resend (HTTPS) primero porque Railway
@@ -296,6 +306,26 @@ function seedUsers() {
   if (changed) persistUsers();
 }
 seedUsers();
+
+// Promueve a SUPERADMIN los correos de SUPERADMIN_EMAILS. Idempotente: solo
+// sube cuentas existentes que aún no lo sean. Se llama al cargar (modo JSON)
+// y tras sincronizar con Postgres en start().
+function aplicarSuperadmins(origen) {
+  if (!SUPERADMIN_EMAILS.length) return;
+  for (const email of SUPERADMIN_EMAILS) {
+    const u = users[email];
+    if (!u) {
+      console.log('SUPERADMIN_EMAILS: ' + email + ' aún no tiene cuenta (' + origen + '); regístrala primero y se promueve sola.');
+      continue;
+    }
+    if (u.rol === 'SUPERADMIN' && u.activo !== false) continue;
+    u.rol = 'SUPERADMIN';
+    u.activo = true;
+    persistUsers(email);
+    console.log('SUPERADMIN_EMAILS: ' + email + ' promovido a SUPERADMIN (' + origen + ').');
+  }
+}
+aplicarSuperadmins('local');
 
 // Guardado. Cada cambio escribe SOLO lo que cambio en Postgres (antes se
 // reescribia la tabla completa fila por fila, y con 400 cotizaciones aprobar una
@@ -3363,6 +3393,7 @@ async function start() {
       // Si la DB trae datos, mandan; si está vacía y hay JSON local, se migra solo.
       if (Object.keys(s.users).length) { users = s.users; }
       else if (Object.keys(users).length) { db.wt(db.replaceAll('kv_users', users)); }
+      aplicarSuperadmins('postgres');
       if (Object.keys(s.sessions).length) { sessions = s.sessions; persistSessions(); }
       else if (Object.keys(sessions).length) { db.wt(db.replaceAll('kv_sessions', sessions)); }
       if (Object.keys(s.quotes).length) {
