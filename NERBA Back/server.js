@@ -1254,6 +1254,30 @@ async function manejar(req, res) {
     }
   }
 
+  // Nueva conversación: borra el historial de la actual (solo la del dueño)
+  // y entrega un id fresco. Con tope diario por cuenta para que no reinicien
+  // en bucle quemando cuota de IA.
+  if (pathname === '/api/chatbot/reset' && req.method === 'POST') {
+    if (!rateLimit(req, 10, 60000)) return sendJSON(res, 429, { error: 'Demasiados reinicios seguidos. Espera un momento.' }, req);
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch (e) {
+      return sendJSON(res, 400, { error: 'Solicitud inválida' }, req);
+    }
+    const u = userByToken(getToken(req));
+    if (!u) return sendJSON(res, 401, { error: 'Inicia sesión para usar NerBot.' }, req);
+    if (nerbotNo(u)) return sendJSON(res, 403, { error: 'NerBot está disponible para cuentas CLIENTE.' }, req);
+    try {
+      const result = await nerbot.resetear({
+        sessionId: body.session_id || body.sessionId,
+        user: u,
+      });
+      return sendJSON(res, 200, result, req);
+    } catch (e) {
+      const status = Number(e && e.status) || 500;
+      return sendJSON(res, status, { error: e.message || 'No se pudo reiniciar la conversación.' }, req);
+    }
+  }
+
   if (pathname === '/api/chatbot/feedback' && req.method === 'POST') {
     let body = {};
     try { body = JSON.parse(await readBody(req)); } catch (e) {

@@ -983,11 +983,72 @@ async function feedback({sessionId, user, messageId, rating, note}) {
   return { ok: true };
 }
 
+// Conversaciones nuevas por cuenta y día: el botón "nueva conversación" pasa
+// por aquí. Sin tope, reiniciar en bucle multiplicaría el gasto de IA (cada
+// reinicio es contexto fresco que vuelve a calificar desde cero).
+const MAX_CHATS_DIA = Math.max(1, parseInt(process.env.NERBOT_MAX_CHATS_DIA || '10', 10) || 10);
+
+async function contarSesionesRecientes(userEmail) {
+  if (dbMode && db && db.getPool) {
+    const r = await db.getPool().query(
+      `SELECT COUNT(*)::int AS n FROM chatbot_sessions
+        WHERE user_email=$1 AND created_at > NOW() - INTERVAL '24 hours'`,
+      [userEmail]
+    );
+    return (r.rows[0] && r.rows[0].n) || 0;
+  }
+  const desde = Date.now() - 86400000;
+  return Object.values(localStore.sessions)
+    .filter((s) => s && s.userEmail === userEmail && Date.parse(s.createdAt || 0) > desde).length;
+}
+
+async function borrarSesion(sessionId, userEmail) {
+  if (dbMode && db && db.getPool) {
+    await db.getPool().query(
+      `DELETE FROM chatbot_messages WHERE session_id=$1 AND user_email=$2`,
+      [sessionId, userEmail]
+    );
+    await db.getPool().query(
+      `DELETE FROM chatbot_sessions WHERE id=$1 AND user_email=$2`,
+      [sessionId, userEmail]
+    );
+    return;
+  }
+  localStore.messages = localStore.messages
+    .filter((m) => !(m.sessionId === sessionId && m.userEmail === userEmail));
+  delete localStore.sessions[sessionId + '::' + userEmail];
+  persistLocal();
+}
+
+// Borra la conversación actual (solo la del dueño) y entrega un id fresco.
+// Si ya reinició muchas veces hoy, se bloquea con 429 en vez de gastar IA.
+async function resetear({sessionId, user}) {
+  if (!puedeUsarNerBot(user)) {
+    const err = new Error('Solo clientes autenticados pueden usar NerBot.');
+    err.status = 403;
+    throw err;
+  }
+  const email = cleanText(user.email, 160).toLowerCase();
+  const recientes = await contarSesionesRecientes(email);
+  if (recientes >= MAX_CHATS_DIA) {
+    const err = new Error('Ya iniciaste varias conversaciones hoy. Sigue en la actual para no perder el hilo.');
+    err.status = 429;
+    throw err;
+  }
+  if (sessionId) {
+    try { await borrarSesion(safeSessionId(sessionId), email); } catch {}
+  }
+  const nuevo = 'nb_' + Date.now().toString(36) + '_' + crypto.randomBytes(4).toString('hex');
+  await ensureSession(nuevo, email);
+  return { session_id: nuevo };
+}
+
 module.exports = {
   init,
   message,
   history,
   feedback,
+  resetear,
   estado() {
     return {
       groqConfigured: !!GROQ_KEY,
