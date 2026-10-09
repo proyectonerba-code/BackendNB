@@ -1224,7 +1224,99 @@ const MIME = {
   mp4: 'video/mp4', webm: 'video/webm', ogv: 'video/ogg', mov: 'video/quicktime',
 };
 
-// ---------- servidor ----------
+  // ---------- respaldos ----------
+  // Se respalda lo que hay en DISCO (DATA_DIR/*.json), no lo que hay en memoria:
+  //   - No depende de funciones declaradas dentro de otro ambito (manejar/start),
+  //     que es justo el error que hacia inseguro mover este bloque de sitio.
+  //   - No hay que parsear nada: se copian bytes, asi que no hay riesgo de
+  //     reventar el heap armando el respaldo.
+  //   - Es una copia fiel, cifrada igual que el original si hay DATA_KEY.
+  // Las fotografias NO estan aqui: viven en Postgres/R2, no en estos archivos.
+  const RESPALDO_DIR = path.join(DATA_DIR, '_respaldo');
+  const RESPALDO_MAX = 10;
+  function archivosDeDatos() {
+    let fuera = [];
+    try { fuera = fs.readdirSync(DATA_DIR); } catch { return []; }
+    return fuera
+      .filter((f) => /\.json$/i.test(f)) // los .json.tmp de un corte se ignoran
+      .sort()
+      .map((f) => ({ nombre: f, ruta: path.join(DATA_DIR, f) }));
+  }
+  function listarRespaldos() {
+    try {
+      if (!fs.existsSync(RESPALDO_DIR)) return [];
+      return fs.readdirSync(RESPALDO_DIR, { withFileTypes: true })
+        .filter((d) => d.isDirectory())
+        .map((d) => {
+          let bytes = 0, archivos = 0;
+          try {
+            for (const f of fs.readdirSync(path.join(RESPALDO_DIR, d.name))) {
+              archivos++;
+              try { bytes += fs.statSync(path.join(RESPALDO_DIR, d.name, f)).size; } catch {}
+            }
+          } catch {}
+          return { carpeta: d.name, archivos: archivos, bytes: bytes };
+        })
+        .sort((a, b) => (a.carpeta < b.carpeta ? 1 : -1));
+    } catch { return []; }
+  }
+  // Lee todos los archivos de datos de una vez. Si uno no se puede leer se avisa
+  // en el log en vez de tumbar el respaldo entero.
+  function leerDatos() {
+    const archivos = [];
+    for (const a of archivosDeDatos()) {
+      try { archivos.push({ nombre: a.nombre, datos: fs.readFileSync(a.ruta) }); }
+      catch (e) { console.log('AVISO: no se pudo leer ' + a.nombre + ' para el respaldo: ' + e.message); }
+    }
+    return archivos;
+  }
+  function selloRespaldo() {
+    const d = new Date();
+    // Sin dos puntos en la hora: Windows no los admite en nombres de carpeta y
+    // el respaldo fallaba justo al crear el directorio.
+    return d.getFullYear() + '-' + dosDigitos(d.getMonth() + 1) + '-' + dosDigitos(d.getDate())
+      + 'T' + horaLocal(d).replace(/:/g, '-') + '-' + dosDigitos((d.getMilliseconds() / 10) | 0) + 'Z';
+  }
+  // Escribe el respaldo en disco y borra los viejos. writeJSONAtomico (tmp +
+  // rename) hace que un corte a mitad deje el respaldo anterior intacto.
+  function respaldoEnDisco() {
+    const archivos = leerDatos();
+    if (!archivos.length) throw new Error('no hay archivos de datos que respaldar');
+    const sello = selloRespaldo();
+    const dir = path.join(RESPALDO_DIR, sello);
+    fs.mkdirSync(dir, { recursive: true });
+    const detalle = [];
+    let bytes = 0;
+    for (const a of archivos) {
+      const destino = path.join(dir, a.nombre);
+      // Se guarda parseado para que writeJSONAtomico lo cifre igual que el
+      // original: una copia en plano de datos cifrados seria peor que no tenerla.
+      writeJSONAtomico(destino, JSON.parse(a.datos.toString('utf8').replace(/^\uFEFF/, '')));
+      try { bytes += fs.statSync(destino).size; } catch {}
+      detalle.push({ nombre: a.nombre, bytes: a.datos.length });
+    }
+    writeJSONAtomico(path.join(dir, 'manifiesto.json'), {
+      fecha: sello, generado: 'Backend Grupo NERBA HIDALGO', cifrado: !!DATA_KEY,
+      origen: DB_MODE ? 'Postgres' : 'archivos JSON',
+      archivos: detalle,
+      nota: 'Copia de los archivos de datos. Las fotografias viven en R2/Postgres, no aqui.',
+    });
+    const viejos = listarRespaldos();
+    let antiguosBorrados = 0;
+    if (viejos.length > RESPALDO_MAX) {
+      for (const v of viejos.slice(RESPALDO_MAX)) {
+        try {
+          const d = path.join(RESPALDO_DIR, v.carpeta);
+          for (const f of fs.readdirSync(d)) fs.unlinkSync(path.join(d, f));
+          fs.rmdirSync(d);
+          antiguosBorrados++;
+        } catch {}
+      }
+    }
+    return { carpeta: sello, archivos: archivos.length + 1, bytes: bytes, cifrado: !!DATA_KEY, antiguosBorrados: antiguosBorrados };
+  }
+
+  // ---------- servidor ----------
 // ALCANCE.run() envuelve cada peticion para que corsOrigin sepa de quien es
 // la respuesta, sin tener que pasar req a las mas de cien llamadas a sendJSON.
 const server = http.createServer((req, res) => {
@@ -1943,6 +2035,52 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
     if (!DB_MODE) return sendJSON(res, 400, { error: 'Sin Postgres' }, req);
     const tablas = await db.tamanos();
     return sendJSON(res, 200, { tablas }, req);
+  }
+  // ----- respaldos de la informacion -----
+  // El disco del contenedor se borra en cada redeploy de Railway, asi que un
+  // respaldo en disco solo cubre esa ventana: el que de verdad vale es el que se
+  // descarga (o el que suba a almacenamiento externo). Estos dos caminos se
+  // arman con lo que hay en memoria y sin dependencias nuevas.
+  if (pathname === '/api/admin/respaldo' && req.method === 'POST') {
+    const u = userByToken(getToken(req));
+    if (!u || u.rol !== 'SUPERADMIN') return sendJSON(res, 403, { error: 'Solo el Super Admin puede generar respaldos' }, req);
+    try {
+      const archivos = leerDatos();
+      if (!archivos.length) return sendJSON(res, 500, { error: 'No hay archivos de datos que respaldar' }, req);
+      const sello = selloRespaldo(archivos);
+      const nombre = 'respaldo-nerba-' + sello + '.zip';
+      return enviarZip(req, res, async function* () {
+        for (const a of archivos) { yield { nombre: a.nombre, datos: a.datos }; }
+        yield {
+          nombre: 'manifiesto.json',
+          datos: JSON.stringify({
+            fecha: sello, generado: 'Backend Grupo NERBA HIDALGO', cifrado: !!DATA_KEY,
+            origen: DB_MODE ? 'Postgres' : 'archivos JSON',
+            archivos: archivos.map((a) => ({ nombre: a.nombre, bytes: a.datos.length })),
+            nota: 'Copia de los archivos de datos. Las fotografias viven en R2/Postgres, no aqui.',
+          }, null, 2),
+        };
+      }, nombre);
+    } catch (e) {
+      return sendJSON(res, 500, { error: 'No se pudo armar el respaldo: ' + e.message }, req);
+    }
+  }
+  // Respaldo a disco con retencion (para cubrir el espacio entre redeploys).
+  if (pathname === '/api/admin/respaldo-disco' && req.method === 'POST') {
+    const u = userByToken(getToken(req));
+    if (!u || u.rol !== 'SUPERADMIN') return sendJSON(res, 403, { error: 'Solo el Super Admin puede generar respaldos' }, req);
+    try {
+      const r = respaldoEnDisco();
+      logAudit(req, { modulo: 'sistema', evento: 'respaldo-disco', detalle: r.carpeta + ' (' + r.archivos + ' archivos)' });
+      return sendJSON(res, 200, r, req);
+    } catch (e) {
+      return sendJSON(res, 500, { error: 'No se pudo escribir el respaldo: ' + e.message }, req);
+    }
+  }
+  if (pathname === '/api/admin/respaldos' && req.method === 'GET') {
+    const u = userByToken(getToken(req));
+    if (!u || u.rol !== 'SUPERADMIN') return sendJSON(res, 403, { error: 'Solo el Super Admin puede ver los respaldos' }, req);
+    return sendJSON(res, 200, { respaldos: listarRespaldos() }, req);
   }
   // (Retirado) Existió /api/admin/mover-fotos-disco, que pasaba bytes de PG al
   // disco del contenedor. El disco se pierde en cada redeploy de Railway (no
@@ -3435,6 +3573,24 @@ async function start() {
   } catch (e) {
     console.log('Aviso NerBot: ' + e.message + '. El chat usará fallback seguro.');
   }
+
+  // Respaldo automatico: uno al arrancar (con retardo, para no sumar trabajo al
+  // arranque que ya carga todo) y uno cada 6 horas. Un respaldo que falla NUNCA
+  // debe tumbar el servidor.
+  let respaldando = false;
+  function respaldoSeguro() {
+    if (respaldando) return; // que dos ciclos no se pisen
+    respaldando = true;
+    try {
+      const r = respaldoEnDisco();
+      console.log('Respaldo automatico: ' + r.carpeta + ' (' + r.archivos + ' archivos'
+        + (r.cifrado ? ', cifrado' : '') + (r.antiguosBorrados ? ', ' + r.antiguosBorrados + ' antiguos borrados' : '') + ')');
+    } catch (e) {
+      console.log('AVISO: fallo el respaldo automatico: ' + e.message);
+    } finally { respaldando = false; }
+  }
+  setTimeout(respaldoSeguro, 5 * 60 * 1000).unref();
+  setInterval(respaldoSeguro, 6 * 60 * 60 * 1000).unref();
 
   server.listen(PORT, () => {
     console.log('== Grupo NERBA HIDALGO Backend (Node.js) ==');
