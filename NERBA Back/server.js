@@ -588,19 +588,24 @@ async function enviarZip(req, res, fuente, nombreArchivo) {
 
 // ---------- bitacora de auditoria (solo SUPERADMIN la consulta) ----------
 const auditFile = path.join(DATA_DIR, 'auditoria.json');
+// En modo local, cada evento auditado (login, cambio de estado, descarga de
+// PDF...) releia Y reescribia el archivo COMPLETO de forma sincrona: dos
+// operaciones de disco bloqueando el event loop en pleno request. Ahora la
+// bitacora vive en memoria, como el resto de los almacenes, y se escribe por la
+// cola asincrona (guardarJSONDespues), que ya serializa con tmp + rename.
+let auditLocal = { items: [], lastHash: 'GENESIS' };
+try {
+  const a0 = loadJSON(auditFile, {});
+  if (a0 && Array.isArray(a0.items)) { a0.lastHash = a0.lastHash || 'GENESIS'; auditLocal = a0; }
+} catch {}
 function loadAudit() {
   if (DB_MODE && cAudit) return cAudit;
-  try {
-    if (fs.existsSync(auditFile)) {
-      const d = loadJSON(auditFile, {});
-      if (d && Array.isArray(d.items)) { if (DB_MODE) cAudit = d; return d; }
-    }
-  } catch {}
-  return { items: [], lastHash: 'GENESIS' };
+  return auditLocal;
 }
 function persistAudit(a) {
   if (a.items.length > 2000) a.items = a.items.slice(-2000);
-  saveJSON(auditFile, a);
+  if (a !== auditLocal) auditLocal = a;
+  guardarJSONDespues(auditFile, a);
   if (DB_MODE) {
     cAudit = a;
     const byId = {};
@@ -933,8 +938,11 @@ function verifyGoogleCredential(credential) {
 // archivo podia escribir la sesion de cualquier cuenta y hacerse el pasa.
 function createSession(email) {
   const token = crypto.randomBytes(32).toString('hex');
-  sessions[hashToken(token)] = { email, expiresAt: Date.now() + SESSION_TTL_MS };
-  persistSessions();
+  const clave = hashToken(token);
+  sessions[clave] = { email, expiresAt: Date.now() + SESSION_TTL_MS };
+  // Con la clave: persistSessions() sin argumento reescribia TODAS las sesiones
+  // en cada login. Con la clave solo toca la fila nueva.
+  persistSessions(clave);
   return token;
 }
 function publicUser(u) {
@@ -1478,7 +1486,9 @@ async function manejar(req, res) {
     // el envio de SMS o WhatsApp no tenga que limpiarlo.
     const telefono = normalizaTelefono(body.telefono);
     users[email] = { nombre, email, telefono, passHash: hashPassword(password), passPropia: true, rol: 'CLIENTE', activo: true, tema: 'light', lastLogin: null, createdAt: fechaLocal() };
-    persistUsers();
+    // Con el correo: persistUsers() sin argumento reescribia TODOS los usuarios
+    // en cada registro. Con la clave solo inserta la fila nueva.
+    persistUsers(email);
     logAudit(req, { modulo: 'accesos', evento: 'registro', detalle: nombre, usuario: email });
     const token = createSession(email);
     return sendJSON(res, 201, { token, ...publicUser(users[email]) });
@@ -1610,9 +1620,12 @@ if (pathname === '/api/login' && req.method === 'POST') {
       logAudit(req, { modulo: 'accesos', evento: 'login-bloqueado', detalle: email, usuario: email });
       return sendJSON(res, 403, { error: 'Cuenta desactivada. Contacta al administrador.' });
     }
-    if (!u.passHash.startsWith('scrypt$')) { u.passHash = hashPassword(body.password || ''); u.passPropia = true; persistUsers(); }
+    if (!u.passHash.startsWith('scrypt$')) { u.passHash = hashPassword(body.password || ''); u.passPropia = true; persistUsers(email); }
     u.lastLogin = { fecha: fechaLocal(), hora: horaLocal(), ip: clientIp(req) };
-    persistUsers();
+    // Cada login reescribia la tabla de usuarios COMPLETA (y despues la de
+    // sesiones). Con la clave de cada uno solo se toca la fila de esta cuenta:
+    // con miles de usuarios, un login pasaba de miles de filas a una.
+    persistUsers(email);
     const token = createSession(email);
     logAudit(req, { modulo: 'accesos', evento: 'login', detalle: u.nombre + ' (' + u.rol + ')' });
     return sendJSON(res, 200, { token, ...publicUser(u) });
