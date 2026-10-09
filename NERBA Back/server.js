@@ -76,11 +76,13 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 const usersFile = path.join(DATA_DIR, 'users.json');
 const quotesFile = path.join(DATA_DIR, 'cotizaciones.json');
 const sessionsFile = path.join(DATA_DIR, 'sesiones.json');
+const avisosFile = path.join(DATA_DIR, 'avisos.json');
 
 // ---------- estado en memoria + persistencia ----------
 let users = {};      // email -> { nombre, email, telefono, passHash, direccion, rol, createdAt }
 let sessions = {};   // token -> { email, expiresAt }
 let quotes = {};     // folio -> cotizacion
+let avisos = [];     // [{ id, titulo, texto, img, para, por, fecha, leidoPor: [] }]
 let folioSeq = 8850;
 // --- Folios: una serie por tipo de trabajo ---------------------------------
 // Antes todas las cotizaciones compartian un solo contador (COT-8850-2026),
@@ -227,6 +229,19 @@ sessions = Object.fromEntries(Object.entries(storedSessions).filter(([, s]) =>
 ));
 if (Object.keys(sessions).length !== Object.keys(storedSessions).length) persistSessions();
 const quotesArr = loadJSON(quotesFile, []);
+const avisosArr = loadJSON(avisosFile, []);
+if (Array.isArray(avisosArr)) {
+  avisos = avisosArr.filter((a) => a && a.id).map((a) => ({
+    id: String(a.id),
+    titulo: String(a.titulo || ''),
+    texto: String(a.texto || ''),
+    img: typeof a.img === 'string' ? a.img : '',
+    para: String(a.para || 'TODOS').toUpperCase(),
+    por: String(a.por || ''),
+    fecha: String(a.fecha || ''),
+    leidoPor: Array.isArray(a.leidoPor) ? a.leidoPor.map(String) : []
+  }));
+}
 let migDemo = false;
 for (const q of quotesArr) {
   if (String(q.email || '').toLowerCase() === 'demo@nerba.mx' && q.demo !== true) { q.demo = true; migDemo = true; }
@@ -348,6 +363,27 @@ function borrarQuoteEnDb(folio) {
   // reescribiria la tabla completa en Postgres, que es justo lo que evita el
   // borrado por fila.
   guardarJSONDespues(quotesFile, Object.values(quotes));
+}
+// --- Avisos personalizados (campana del header) ---------------------------
+// id: el aviso que cambio. Sin id (rescates masivos) se reescribe todo.
+function persistAvisos(id) {
+  if (id && DB_MODE) {
+    const a = avisos.find((x) => x.id === id);
+    if (a) db.wt(db.upsert('kv_avisos', id, a));
+  } else if (DB_MODE) db.wt(db.replaceAll('kv_avisos', avisos));
+  guardarJSONDespues(avisosFile, avisos);
+}
+// A quien le corresponde un aviso. 'TODOS' es para cualquiera con sesion;
+// 'STAFF' abarca todos los roles internos; el resto es un rol exacto.
+function avisoParaUsuario(a, u) {
+  if (!a || !u) return false;
+  const rol = String(u.rol || '').toUpperCase();
+  if (a.para === 'TODOS') return true;
+  if (a.para === 'STAFF') {
+    return ['ADMIN', 'SUPERADMIN', 'PRODUCTOS_ELECTRONICOS', 'PROYECTOS_ESPECIALES'].indexOf(rol) >= 0;
+  }
+  if (a.para === 'CLIENTE') return !rol || rol === 'CLIENTE';
+  return a.para === rol;
 }
 
 // ---------- archivo de fotos: los bytes salen de la memoria ----------
@@ -1560,6 +1596,85 @@ if (pathname === '/api/login' && req.method === 'POST') {
       .sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')))
       .map((c) => quoteForUser(c, u, { sinFotos: true }));
     return sendJSON(res, 200, lista);
+  }
+
+  // ----- avisos personalizados (la campana del header) -----
+  // GET: solo los que le tocan a quien pregunta, con su marca de leido.
+  if (pathname === '/api/avisos' && req.method === 'GET') {
+    const u = userByToken(getToken(req));
+    if (!u) return sendJSON(res, 401, { error: 'Inicia sesion para ver los avisos' });
+    const em = String(u.email || '').toLowerCase();
+    const lista = avisos
+      .filter((a) => avisoParaUsuario(a, u))
+      .sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')))
+      .map((a) => ({
+        id: a.id, titulo: a.titulo, texto: a.texto, img: a.img,
+        para: a.para, por: a.por, fecha: a.fecha,
+        leida: a.leidoPor.indexOf(em) >= 0
+      }));
+    return sendJSON(res, 200, lista);
+  }
+
+  // POST: unicamente Admin o SuperAdmin publica avisos.
+  if (pathname === '/api/avisos' && req.method === 'POST') {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const u = userByToken(getToken(req));
+    if (!u) return sendJSON(res, 401, { error: 'Inicia sesion para publicar avisos' });
+    if (u.rol !== 'ADMIN' && u.rol !== 'SUPERADMIN') return sendJSON(res, 403, { error: 'Solo Admin o SuperAdmin pueden publicar avisos' });
+    // El front manda { aviso: {...} }; si viene plano tambien se acepta.
+    const a = (body && body.aviso) || body || {};
+    const titulo = String(a.titulo || '').trim();
+    const texto = String(a.texto || '').trim();
+    if (!titulo) return sendJSON(res, 400, { error: 'Escribe el titulo del aviso' });
+    if (!texto) return sendJSON(res, 400, { error: 'Escribe el contenido del aviso' });
+    const PARA_VALIDOS = ['TODOS', 'CLIENTE', 'ADMIN', 'SUPERADMIN', 'PRODUCTOS_ELECTRONICOS', 'PROYECTOS_ESPECIALES', 'STAFF'];
+    const para = String(a.para || 'TODOS').toUpperCase();
+    if (PARA_VALIDOS.indexOf(para) < 0) return sendJSON(res, 400, { error: 'Destinatario no valido' });
+    const img = typeof a.img === 'string' ? a.img : '';
+    if (img && img.length > 900000) return sendJSON(res, 413, { error: 'La imagen es muy grande (maximo 700 KB)' });
+    const nuevo = {
+      id: 'av-' + Date.now().toString(36) + '-' + crypto.randomBytes(4).toString('hex'),
+      titulo: titulo, texto: texto, img: img, para: para,
+      por: String(u.nombre || u.email || ''),
+      fecha: fechaLocal() + 'T' + horaLocal(),
+      leidoPor: []
+    };
+    avisos.unshift(nuevo);
+    if (avisos.length > 200) avisos = avisos.slice(0, 200);
+    persistAvisos(nuevo.id);
+    logAudit(req, { modulo: 'avisos', evento: 'alta', detalle: titulo + ' -> ' + para });
+    return sendJSON(res, 201, nuevo);
+  }
+
+  const mAvVisto = /^\/api\/avisos\/(.+)\/(visto|leida)$/.exec(pathname);
+  if (mAvVisto && req.method === 'POST') {
+    const u = userByToken(getToken(req));
+    if (!u) return sendJSON(res, 401, { error: 'No autorizado' });
+    const id = decodeURIComponent(mAvVisto[1]);
+    const em = String(u.email || '').toLowerCase();
+    const a = avisos.find((x) => x.id === id);
+    if (!a) return sendJSON(res, 404, { error: 'Aviso no encontrado' });
+    if (a.leidoPor.indexOf(em) < 0) {
+      a.leidoPor.push(em);
+      persistAvisos(a.id);
+    }
+    return sendJSON(res, 200, { ok: true, id: a.id, leida: true });
+  }
+
+  const mAv = /^\/api\/avisos\/(.+)$/.exec(pathname);
+  if (mAv && req.method === 'DELETE') {
+    const u = userByToken(getToken(req));
+    if (!u) return sendJSON(res, 401, { error: 'No autorizado' });
+    if (u.rol !== 'ADMIN' && u.rol !== 'SUPERADMIN') return sendJSON(res, 403, { error: 'Solo Admin o SuperAdmin pueden borrar avisos' });
+    const id = decodeURIComponent(mAv[1]);
+    const i = avisos.findIndex((a) => a.id === id);
+    if (i < 0) return sendJSON(res, 404, { error: 'Aviso no encontrado' });
+    avisos.splice(i, 1);
+    persistAvisos();
+    if (DB_MODE) db.wt(db.borrar('kv_avisos', id));
+    logAudit(req, { modulo: 'avisos', evento: 'baja', folio: id });
+    return sendJSON(res, 200, { ok: true });
   }
 
   if (pathname === '/api/cotizaciones' && req.method === 'POST') {
