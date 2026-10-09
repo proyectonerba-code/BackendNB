@@ -38,6 +38,8 @@ async function init() {
   await p.query(`CREATE TABLE IF NOT EXISTS kv_mantenimiento (key TEXT PRIMARY KEY, data JSONB NOT NULL)`);
   await p.query(`CREATE TABLE IF NOT EXISTS kv_auditoria (key TEXT PRIMARY KEY, data JSONB NOT NULL)`);
   await p.query(`CREATE TABLE IF NOT EXISTS kv_recuperacion (key TEXT PRIMARY KEY, data JSONB NOT NULL)`);
+  // Avisos personalizados del staff a usuarios (campana). Una fila por aviso.
+  await p.query(`CREATE TABLE IF NOT EXISTS kv_avisos (key TEXT PRIMARY KEY, data JSONB NOT NULL)`);
   await p.query(`CREATE TABLE IF NOT EXISTS kv_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`);
   // Archivo de fotos. Son DOS tablas a proposito: el indice guarda solo datos
   // pequenos (folio, cuantas fotos, cuanto pesan) y los bytes viven aparte. Si
@@ -177,7 +179,7 @@ async function loadList(table) {
 }
 
 async function loadAllState() {
-  const [users, sessions, quotes, productos, servicios, marcas, categorias, contacto, mant, auditoria, recup] = await Promise.all([
+  const [users, sessions, quotes, productos, servicios, marcas, categorias, contacto, mant, auditoria, recup, avisos] = await Promise.all([
     loadAll('kv_users'),
     loadSessions(),
     loadAll('kv_quotes'),
@@ -189,6 +191,7 @@ async function loadAllState() {
     loadList('kv_mantenimiento'),
     loadAll('kv_auditoria'),
     loadAll('kv_recuperacion'),
+    loadList('kv_avisos'),
   ]);
   const items = Object.values(auditoria || {}).sort((a, b) => String(a.id || '').localeCompare(String(b.id || '')));
   let lastHash = 'GENESIS';
@@ -198,7 +201,7 @@ async function loadAllState() {
     if (r.rows[0]) lastHash = r.rows[0].value;
   } catch {}
   if (items.length) lastHash = items[items.length - 1].hash || lastHash;
-  return { users, sessions, quotes, productos: Object.values(productos || {}), servicios: Object.values(servicios || {}), marcas, categorias, contacto, mant, recup: recup || {}, audit: { items, lastHash } };
+  return { users, sessions, quotes, productos: Object.values(productos || {}), servicios: Object.values(servicios || {}), marcas, categorias, contacto, mant, avisos: avisos || [], recup: recup || {}, audit: { items, lastHash } };
 }
 
 // Escritura directa (write-through). Fire-and-forget desde server.js.

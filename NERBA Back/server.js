@@ -27,7 +27,7 @@ const db = require('./db');
 const nerbot = require('./nerbot');
 let DB_MODE = false;
 // Mirrors en memoria cuando hay DB (lecturas sync, escritura write-through).
-let cProductos = null, cServicios = null, cMarcas = null, cCategorias = null, cContacto = null, cMant = null, cAudit = null, cRecup = null;
+let cProductos = null, cServicios = null, cMarcas = null, cCategorias = null, cContacto = null, cMant = null, cAudit = null, cRecup = null, cAvisos = null;
 
 // Carpeta del frontend: Railway usa FRONT_DIR; local usa carpeta hermana.
 const CANDIDATES = [
@@ -2997,6 +2997,159 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
     return res.end(buf);
   }
 
+  // ----- avisos personalizados del staff (campana) -----
+  // Viven en el SERVIDOR (JSON + Postgres) para que lleguen a cualquier PC o
+  // celular, no solo al navegador donde se crearon. Los locales (localStorage)
+  // nunca cruzan de equipo: ese era el fallo del intento anterior.
+  const avisosFile = path.join(DATA_DIR, 'avisos.json');
+  function loadAvisos() {
+    if (DB_MODE && cAvisos) return cAvisos;
+    try { const l = loadJSON(avisosFile, null); if (l) { if (DB_MODE) cAvisos = l; return l; } } catch {}
+    return [];
+  }
+  function persistAviso(aviso) {
+    const lista = loadAvisos();
+    const i = lista.findIndex((x) => x && x.id === aviso.id);
+    if (i >= 0) lista[i] = aviso; else lista.unshift(aviso);
+    saveJSON(avisosFile, lista);
+    if (DB_MODE) { cAvisos = lista; db.wt(db.upsert('kv_avisos', aviso.id, aviso)); }
+  }
+  function borrarAviso(id) {
+    const lista = loadAvisos().filter((x) => !(x && x.id === id));
+    saveJSON(avisosFile, lista);
+    if (DB_MODE) { cAvisos = lista; db.wt(db.borrar('kv_avisos', id)); }
+  }
+  // Publican ADMIN, SUPERADMIN, PRODUCTOS_ELECTRONICOS (isStaff) y
+  // PROYECTOS_ESPECIALES (no entra en isStaff, se agrega aquí).
+  function puedeAvisar(u) { return !!(u && (isStaff(u) || u.rol === 'PROYECTOS_ESPECIALES')); }
+  const ROLES_AVISOS = ['CLIENTE', 'ADMIN', 'SUPERADMIN', 'PROYECTOS_ESPECIALES', 'PRODUCTOS_ELECTRONICOS'];
+  function avisoVisible(a, u) {
+    if (!a || a.activa === false) return false;
+    if (a.expira && String(a.expira) < new Date().toISOString()) return false;
+    const d = a.destino || { tipo: 'todos' };
+    if (!d || d.tipo === 'todos') return true;
+    if (d.tipo === 'roles') {
+      return Array.isArray(d.roles) && d.roles.map((r) => String(r).toUpperCase()).indexOf(String(u.rol || '').toUpperCase()) !== -1;
+    }
+    if (d.tipo === 'emails') {
+      return Array.isArray(d.emails) && d.emails.map((e) => String(e).trim().toLowerCase()).indexOf(String(u.email || '').trim().toLowerCase()) !== -1;
+    }
+    return false;
+  }
+  function avisoParaTi(a) {
+    return { id: a.id, titulo: a.titulo, mensaje: a.mensaje, link: a.link || '#', creada: a.creada, expira: a.expira || null };
+  }
+  if (pathname === '/api/avisos' && req.method === 'GET') {
+    const u = userByToken(getToken(req));
+    if (!u) return sendJSON(res, 401, { error: 'Inicia sesion para ver los avisos' });
+    const lista = loadAvisos();
+    // El staff gestiona: ve todos (incluso vencidos) con su destino.
+    if (puedeAvisar(u)) {
+      return sendJSON(res, 200, lista.slice().sort((a, b) => String(b.creada || '').localeCompare(String(a.creada || ''))));
+    }
+    return sendJSON(res, 200, lista.filter((a) => avisoVisible(a, u))
+      .sort((a, b) => String(b.creada || '').localeCompare(String(a.creada || '')))
+      .map(avisoParaTi));
+  }
+  if (pathname === '/api/avisos' && req.method === 'POST') {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const u = userByToken(getToken(req));
+    if (!u) return sendJSON(res, 401, { error: 'Inicia sesion para publicar avisos' });
+    if (!puedeAvisar(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
+    const titulo = String(body.titulo || '').trim().slice(0, 120);
+    const mensaje = String(body.mensaje || '').trim().slice(0, 500);
+    if (!titulo) return sendJSON(res, 400, { error: 'El titulo es obligatorio' });
+    if (!mensaje) return sendJSON(res, 400, { error: 'El mensaje es obligatorio' });
+    let link = String(body.link || '').trim().slice(0, 200);
+    // Solo rutas internas: nada de javascript: ni paginas externas.
+    if (link && !/^\/[A-Za-z0-9/_\-.?#=&%]*$/.test(link)) {
+      return sendJSON(res, 400, { error: 'El enlace debe ser una ruta interna (p. ej. /cotizador.html)' });
+    }
+    const tipo = String((body.destino && body.destino.tipo) || 'todos').toLowerCase();
+    if (['todos', 'roles', 'emails'].indexOf(tipo) === -1) return sendJSON(res, 400, { error: 'Destino no valido' });
+    let destino = { tipo: 'todos' };
+    if (tipo === 'roles') {
+      const roles = (Array.isArray(body.destino.roles) ? body.destino.roles : String(body.destino.roles || '').split(','))
+        .map((r) => String(r).trim().toUpperCase()).filter((r) => ROLES_AVISOS.indexOf(r) !== -1);
+      if (!roles.length) return sendJSON(res, 400, { error: 'Elige al menos un rol destino' });
+      destino = { tipo: 'roles', roles };
+    }
+    if (tipo === 'emails') {
+      const raw = Array.isArray(body.destino.emails) ? body.destino.emails : String(body.destino.emails || '').split(/[,\n;]+/);
+      const emails = raw.map((e) => String(e).trim().toLowerCase()).filter((e) => e.indexOf('@') !== -1).slice(0, 50);
+      if (!emails.length) return sendJSON(res, 400, { error: 'Escribe al menos un correo destino' });
+      destino = { tipo: 'emails', emails };
+    }
+    let expira = null;
+    if (body.expira) {
+      const t = Date.parse(String(body.expira));
+      if (isNaN(t)) return sendJSON(res, 400, { error: 'Fecha de expiracion no valida' });
+      expira = new Date(t).toISOString();
+    }
+    let id = 'AV-' + Date.now().toString(36).toUpperCase();
+    const existen = loadAvisos();
+    while (existen.some((x) => x && x.id === id)) id += Math.floor(Math.random() * 36).toString(36).toUpperCase();
+    const aviso = {
+      id, titulo, mensaje, link: link || '#', destino,
+      creada: new Date().toISOString(), expira, activa: true,
+      creadaPor: { email: u.email, nombre: u.nombre, rol: u.rol },
+    };
+    persistAviso(aviso);
+    logAudit(req, { modulo: 'avisos', evento: 'alta', detalle: titulo + ' -> ' + tipo });
+    return sendJSON(res, 201, aviso);
+  }
+  const mAviso = /^\/api\/avisos\/([^/]+)$/.exec(pathname);
+  if (mAviso && (req.method === 'PUT' || req.method === 'DELETE')) {
+    let body = {};
+    try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
+    const u = userByToken(getToken(req));
+    if (!u) return sendJSON(res, 401, { error: 'Inicia sesion' });
+    if (!puedeAvisar(u)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
+    const lista = loadAvisos();
+    const a = lista.find((x) => x && x.id === mAviso[1]);
+    if (!a) return sendJSON(res, 404, { error: 'No encontrado' });
+    const dueno = a.creadaPor && a.creadaPor.email && u.email &&
+      String(a.creadaPor.email).toLowerCase() === String(u.email).toLowerCase();
+    if (!dueno && u.rol !== 'SUPERADMIN') {
+      return sendJSON(res, 403, { error: 'Solo quien lo creo o Super Admin puede modificarlo' });
+    }
+    if (req.method === 'DELETE') {
+      borrarAviso(a.id);
+      logAudit(req, { modulo: 'avisos', evento: 'baja', detalle: a.titulo });
+      return sendJSON(res, 200, { ok: true });
+    }
+    if (body.titulo !== undefined) {
+      const t = String(body.titulo || '').trim().slice(0, 120);
+      if (!t) return sendJSON(res, 400, { error: 'El titulo no puede quedar vacio' });
+      a.titulo = t;
+    }
+    if (body.mensaje !== undefined) {
+      const m = String(body.mensaje || '').trim().slice(0, 500);
+      if (!m) return sendJSON(res, 400, { error: 'El mensaje no puede quedar vacio' });
+      a.mensaje = m;
+    }
+    if (body.link !== undefined) {
+      const l = String(body.link || '').trim().slice(0, 200);
+      if (l && !/^\/[A-Za-z0-9/_\-.?#=&%]*$/.test(l)) {
+        return sendJSON(res, 400, { error: 'El enlace debe ser una ruta interna' });
+      }
+      a.link = l || '#';
+    }
+    if (body.activa !== undefined) a.activa = body.activa === true || String(body.activa).toLowerCase() === 'true';
+    if (body.expira !== undefined) {
+      if (!body.expira) a.expira = null;
+      else {
+        const t = Date.parse(String(body.expira));
+        if (isNaN(t)) return sendJSON(res, 400, { error: 'Fecha de expiracion no valida' });
+        a.expira = new Date(t).toISOString();
+      }
+    }
+    persistAviso(a);
+    logAudit(req, { modulo: 'avisos', evento: 'edicion', detalle: a.titulo });
+    return sendJSON(res, 200, a);
+  }
+
   if (pathname.startsWith('/api/')) return sendJSON(res, 404, { error: 'Ruta API no encontrada' });
 
   // ----- archivos estaticos del frontend (desactivable en deploy separado) -----
@@ -3072,6 +3225,7 @@ async function start() {
       if (Object.keys(s.categorias).length) cCategorias = s.categorias;
       if (s.contacto.length) cContacto = s.contacto;
       if (s.mant.length) cMant = s.mant;
+      if (s.avisos && s.avisos.length) cAvisos = s.avisos;
       if (s.audit.items.length) cAudit = s.audit;
       if (s.recup && Object.keys(s.recup).length) {
         const vivos = {};
