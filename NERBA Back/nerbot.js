@@ -612,11 +612,19 @@ async function callGemini({ question, history, catalog, area, picks, user }) {
     // reintenta: cada intento gasta mas cuota y la prolonga. Se marca una
     // pausa para que el siguiente mensaje use la cache en vez de fallar.
     if (response.status === 429) {
-      const espera = pausaCuotaSeg || 30;
-      pausaCuotaSeg = Math.min(300, Math.round(espera * 1.5));
+      // Se captura el detalle real de Google: "per minute" se recupera en un
+      // minuto, pero "per day" (cuota diaria agotada) NO se recupera en esta
+      // sesión, así que se pausa Gemini 10 min en vez de golpearlo en cada
+      // mensaje. Antes no se distinguía y siempre se esperaba solo 30s.
+      let detalle = '';
+      try { const e = JSON.parse(raw); detalle = cleanText(e && e.error && e.error.message, 300); } catch {}
+      ULTIMO_ERROR_GEMINI = 'Gemini 429: ' + (detalle || 'cuota agotada');
+      const porDia = /per\s*day|perday|daily|requests?\s*per\s*day/i.test(detalle);
+      const espera = porDia ? 600 : (pausaCuotaSeg || 30);
+      if (!porDia) pausaCuotaSeg = Math.min(300, Math.round(espera * 1.5));
       pausaGemini = Date.now() + espera * 1000;
-      console.log('NerBot: cuota de Gemini agotada. Pausa ' + Math.round((pausaGemini - Date.now()) / 1000) + 's; se sirve cache/Groq.');
-      throw new Error('Gemini 429: cuota agotada');
+      console.log('NerBot: ' + ULTIMO_ERROR_GEMINI + (porDia ? ' [limite diario, pausa 10min]' : ' [pausa ' + espera + 's]'));
+      throw new Error(ULTIMO_ERROR_GEMINI);
     }
 
     // 503/529 = saturacion temporal: un reintento con espera y ya.
