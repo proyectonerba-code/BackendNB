@@ -329,6 +329,14 @@ function persistSessions(clave) {
   else if (DB_MODE) db.wt(db.replaceAll('kv_sessions', sessions));
   guardarJSONDespues(sessionsFile, sessions);
 }
+// Borrar sesion de verdad. Antes, al caducar, se llamaba a persistSessions(clave)
+// con sessions[clave] ya borrado: en Postgres eso hacia un INSERT ... ON CONFLICT
+// DO UPDATE con expires_at = 0, nunca un DELETE. Cada sesion vencida dejaba una
+// fila zombie para siempre.
+function borrarSesion(clave) {
+  if (DB_MODE) db.wt(db.borrar('kv_sessions', clave));
+  guardarJSONDespues(sessionsFile, sessions);
+}
 // folio: la cotizacion que cambio. Sin folio (carga inicial, restauraciones
 // masivas) se cae al comportamiento de antes, que reescribe todo.
 function persistQuotes(folio) {
@@ -1026,9 +1034,16 @@ function readBody(req) {
 }
 // Rate-limit mínimo en memoria para login/registro/contacto/google (anti fuerza bruta)
 const __rl = new Map(); // ip -> { n, reset }
+// El mapa solo crecia: cada IP que pasaba dejaba entrada para siempre. Ahora se
+// purgan las vencidas cuando pasa de 5000 entradas (igual que __chatGap).
+function purgarRateLimit(now) {
+  if (__rl.size <= 5000) return;
+  for (const [k, v] of __rl) if (!v || v.reset < now) __rl.delete(k);
+}
 function rateLimit(req, max = 30, windowMs = 60000) {
   const ip = clientIp(req) || 'unknown';
   const now = Date.now();
+  purgarRateLimit(now);
   const e = __rl.get(ip);
   if (!e || now > e.reset) { __rl.set(ip, { n: 1, reset: now + windowMs }); return true; }
   e.n++;
@@ -1039,6 +1054,7 @@ function rateLimit(req, max = 30, windowMs = 60000) {
 // le quita el turno a los demás que comparten IP o cuota de IA.
 function rateLimitKey(key, max = 30, windowMs = 60000) {
   const now = Date.now();
+  purgarRateLimit(now);
   const e = __rl.get(key);
   if (!e || now > e.reset) { __rl.set(key, { n: 1, reset: now + windowMs }); return true; }
   e.n++;
@@ -1072,7 +1088,7 @@ function userByToken(token) {
   const clave = hashToken(token);
   const session = sessions[clave];
   if (!session || Number(session.expiresAt) <= Date.now()) {
-    if (session) { delete sessions[clave]; persistSessions(clave); }
+    if (session) { delete sessions[clave]; borrarSesion(clave); }
     return null;
   }
   const u = users[session.email.toLowerCase()] || null;
@@ -1183,6 +1199,25 @@ const MIME = {
 // la respuesta, sin tener que pasar req a las mas de cien llamadas a sendJSON.
 const server = http.createServer((req, res) => {
   ALCANCE.run({ req }, () => manejar(req, res));
+});
+
+// ---------- red de seguridad del proceso ----------
+// Sin esto, un await que lanza fuera de un try/catch termina el proceso: en Node
+// >=15 las promesas rechazadas sin capturar se tratan como error fatal. Con el
+// reinicio automatico de Railway eso es un bucle de caidas. Se registra el error
+// para poder diagnosticarlo; una excepcion no capturada si se sale (el estado del
+// proceso queda desconocido y el reinicio lo deja limpio).
+process.on('unhandledRejection', (err) => {
+  console.log('ERROR promesa rechazada: ' + ((err && err.stack) || err));
+});
+process.on('uncaughtException', (err) => {
+  console.log('ERROR excepcion no capturada: ' + ((err && err.stack) || err));
+  setTimeout(() => process.exit(1), 50);
+});
+// Un cliente que corta la conexion a mitad emitia 'error' en el socket sin
+// listener y tambien tumbaba el proceso.
+server.on('clientError', (err, socket) => {
+  try { socket.end('HTTP/1.1 400 Bad Request\r\n\r\n'); } catch (e) {}
 });
 
 async function manejar(req, res) {
@@ -2088,7 +2123,10 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
     const c = quotes[mProy[1]];
     if (!c) return sendJSON(res, 404, { error: 'No encontrada' });
     const puedePE = u && u.rol === 'PROYECTOS_ESPECIALES' && c.area === 'PROYECTOS_ESPECIALES';
-    if (!u || (!isStaff(u) && !puedePE)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
+    // Falta el alcance: sin esto un ADMIN o un PRODUCTOS_ELECTRONICOS podia
+    // escribir fases y avance sobre una cotizacion de PROYECTOS_ESPECIALES, que
+    // es justo la zona que no les corresponde. La ruta /estado ya lo validaba.
+    if (!u || (!isStaff(u) && !puedePE) || !quoteScope(u, c)) return sendJSON(res, 403, { error: 'Solo personal autorizado' });
     if (Array.isArray(body.fases)) {
       c.fases = body.fases.slice(0, 12).map((f) => ({
         titulo: String((f && f.titulo) || '').slice(0, 140),
