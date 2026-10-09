@@ -1543,6 +1543,7 @@ if (pathname === '/api/login' && req.method === 'POST') {
     if (!u) return sendJSON(res, 401, { error: 'No autorizado' });
     if (req.method === 'GET') return sendJSON(res, 200, publicUser(u));
     if (req.method === 'PUT') {
+      if (!rateLimit(req, 20, 60000)) return sendJSON(res, 429, { error: 'Demasiados cambios seguidos. Espera un momento.' }, req);
       if (body.nombre !== undefined) u.nombre = String(body.nombre).trim().slice(0, 120) || u.nombre;
       if (body.telefono !== undefined) u.telefono = normalizaTelefono(body.telefono);
       if (body.telefonoSec !== undefined) u.telefonoSec = normalizaTelefono(body.telefonoSec);
@@ -1607,13 +1608,17 @@ if (pathname === '/api/login' && req.method === 'POST') {
         }
       } catch (e) {}
       try {
-        const rs = loadRecup();
+        // Tokens de recuperación pendientes de esta cuenta (eran loadRecup/
+        // persistRecup, que no existen: el almacén real es `resets`).
         let cambio = false;
-        for (const k of Object.keys(rs)) {
-          if (String((rs[k] || {}).email || '').toLowerCase() === email) { delete rs[k]; cambio = true; }
+        for (const k of Object.keys(resets)) {
+          if (String((resets[k] || {}).email || '').toLowerCase() === email) { delete resets[k]; cambio = true; }
         }
-        if (cambio) persistRecup(rs);
+        if (cambio) persistResets();
       } catch (e) {}
+      // Historial del chatbot de esta cuenta (sesiones, mensajes, feedback y
+      // candidatos de aprendizaje): sin esto quedaban huérfanos para siempre.
+      try { await nerbot.borrarUsuario(email); } catch (e) { console.log('Aviso purga chatbot ' + email + ': ' + e.message); }
       persistUsers();
       persistSessions();
       persistQuotes();
@@ -1650,6 +1655,7 @@ if (pathname === '/api/login' && req.method === 'POST') {
   }
 
   if (pathname === '/api/cotizaciones' && req.method === 'POST') {
+    if (!rateLimit(req, 10, 60000)) return sendJSON(res, 429, { error: 'Demasiadas solicitudes seguidas. Espera un momento.' }, req);
     let body = {};
     try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
     const u = userByToken(getToken(req));
@@ -2052,6 +2058,7 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
     }
     delete users[email];
     for (const t of Object.keys(sessions)) { if (sessions[t] && sessions[t].email.toLowerCase() === email) delete sessions[t]; }
+    try { await nerbot.borrarUsuario(email); } catch (e) { console.log('Aviso purga chatbot ' + email + ': ' + e.message); }
     persistUsers();
     persistSessions();
     logAudit(req, { modulo: 'usuarios', evento: 'baja', detalle: target.nombre + ' (' + target.rol + ')', usuario: email });
@@ -3016,6 +3023,7 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
     }
   }
   if (pathname === '/api/mantenimiento' && req.method === 'POST') {
+    if (!rateLimit(req, 10, 60000)) return sendJSON(res, 429, { error: 'Demasiadas solicitudes seguidas. Espera un momento.' }, req);
     let body = {};
     try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
     const u = userByToken(getToken(req));
@@ -3171,6 +3179,7 @@ if (pathname === '/api/servicios/ordenar' && req.method === 'POST') {
       .map(avisoParaTi));
   }
   if (pathname === '/api/avisos' && req.method === 'POST') {
+    if (!rateLimit(req, 10, 60000)) return sendJSON(res, 429, { error: 'Demasiadas solicitudes seguidas. Espera un momento.' }, req);
     let body = {};
     try { body = JSON.parse(await readBody(req)); } catch { body = {}; }
     const u = userByToken(getToken(req));

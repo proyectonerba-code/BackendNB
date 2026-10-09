@@ -1021,6 +1021,28 @@ async function borrarSesion(sessionId, userEmail) {
   persistLocal();
 }
 
+// Purga total del rastro del chatbot de una cuenta (baja propia o baja por
+// SUPERADMIN). Sin esto, sesiones y mensajes quedaban huérfanos para siempre.
+async function borrarUsuario(userEmail) {
+  const email = cleanText(userEmail, 160).toLowerCase();
+  if (!email) return;
+  if (dbMode && db && db.getPool) {
+    const p = db.getPool();
+    await p.query(`DELETE FROM chatbot_messages WHERE user_email=$1`, [email]);
+    await p.query(`DELETE FROM chatbot_sessions WHERE user_email=$1`, [email]);
+    await p.query(`DELETE FROM chatbot_feedback WHERE user_email=$1`, [email]);
+    await p.query(`DELETE FROM chatbot_learning_candidates WHERE user_email=$1`, [email]);
+    return;
+  }
+  localStore.messages = localStore.messages.filter((m) => m.userEmail !== email);
+  localStore.feedback = localStore.feedback.filter((f) => f.userEmail !== email);
+  localStore.learning = localStore.learning.filter((l) => l.userEmail !== email);
+  for (const k of Object.keys(localStore.sessions)) {
+    if (localStore.sessions[k] && localStore.sessions[k].userEmail === email) delete localStore.sessions[k];
+  }
+  persistLocal();
+}
+
 // Borra la conversación actual (solo la del dueño) y entrega un id fresco.
 // Si ya reinició muchas veces hoy, se bloquea con 429 en vez de gastar IA.
 async function resetear({sessionId, user}) {
@@ -1050,6 +1072,7 @@ module.exports = {
   history,
   feedback,
   resetear,
+  borrarUsuario,
   estado() {
     return {
       groqConfigured: !!GROQ_KEY,

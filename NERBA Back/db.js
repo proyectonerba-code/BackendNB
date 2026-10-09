@@ -232,6 +232,16 @@ async function liberarEspacio(opciones) {
   // Auditoria: solo ultimas 2000 (igual que persistAudit en server.js).
   const s3 = await p.query(`DELETE FROM kv_auditoria WHERE key NOT IN (SELECT key FROM kv_auditoria ORDER BY key DESC LIMIT 2000)`);
   reporte.auditoriaBorrada = s3.rowCount || 0;
+  // Chatbot: era el único crecimiento sin tope ni purga (2 filas por turno).
+  // Se conservan 90 días de historial; las sesiones se van con sus mensajes.
+  const s4 = await p.query(`DELETE FROM chatbot_messages WHERE created_at < NOW() - INTERVAL '90 days'`);
+  reporte.mensajesChatBorrados = s4.rowCount || 0;
+  const s5 = await p.query(`DELETE FROM chatbot_feedback WHERE created_at < NOW() - INTERVAL '90 days'`);
+  reporte.feedbackChatBorrado = s5.rowCount || 0;
+  const s6 = await p.query(`DELETE FROM chatbot_learning_candidates WHERE created_at < NOW() - INTERVAL '90 days'`);
+  reporte.aprendizajeChatBorrado = s6.rowCount || 0;
+  const s7 = await p.query(`DELETE FROM chatbot_sessions WHERE updated_at < NOW() - INTERVAL '90 days'`);
+  reporte.sesionesChatBorradas = s7.rowCount || 0;
   // Fotos archivadas viejas: el meta guarda ISO en "archivada".
   const corte = new Date(Date.now() - dias * 864e5).toISOString();
   const viejas = await p.query(`SELECT key FROM kv_fotos_archivo WHERE (data->>'archivada') < $1`, [corte]);
@@ -247,6 +257,10 @@ async function liberarEspacio(opciones) {
   await p.query(`VACUUM ANALYZE kv_auditoria`);
   await p.query(`VACUUM ANALYZE kv_fotos_bin`);
   await p.query(`VACUUM ANALYZE kv_fotos_archivo`);
+  await p.query(`VACUUM ANALYZE chatbot_messages`);
+  await p.query(`VACUUM ANALYZE chatbot_sessions`);
+  await p.query(`VACUUM ANALYZE chatbot_feedback`);
+  await p.query(`VACUUM ANALYZE chatbot_learning_candidates`);
   return reporte;
 }
 
