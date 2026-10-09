@@ -100,9 +100,32 @@ function ensureLocalStore() {
     console.log('NerBot store local: ' + e.message);
   }
 }
+// El store se escribia COMPLETO y de forma sincrona en cada evento: un solo
+// mensaje de chat disparaba hasta 3 escrituras del archivo entero (sesiones,
+// mensajes, feedback), bloqueando el event loop con varios MB. Ahora se agrupa
+// lo que pase en el mismo tick y se escribe una sola vez, con tmp + rename para
+// que un corte a mitad no deje el archivo truncado.
+let persistTimer = null;
 function persistLocal() {
+  if (persistTimer) return;
+  persistTimer = setTimeout(function () {
+    persistTimer = null;
+    try {
+      const tmp = STORE_FILE + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify(localStore, null, 2), 'utf8');
+      fs.renameSync(tmp, STORE_FILE);
+    } catch (e) {
+      console.log('NerBot persist local: ' + e.message);
+    }
+  }, 250);
+}
+// Por si hace falta dejar todo en disco ya (cierre ordenado del proceso).
+function persistLocalAhora() {
+  if (persistTimer) { clearTimeout(persistTimer); persistTimer = null; }
   try {
-    fs.writeFileSync(STORE_FILE, JSON.stringify(localStore, null, 2), 'utf8');
+    const tmp = STORE_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(localStore, null, 2), 'utf8');
+    fs.renameSync(tmp, STORE_FILE);
   } catch (e) {
     console.log('NerBot persist local: ' + e.message);
   }
@@ -1073,6 +1096,7 @@ module.exports = {
   feedback,
   resetear,
   borrarUsuario,
+  persistLocalAhora,
   estado() {
     return {
       groqConfigured: !!GROQ_KEY,

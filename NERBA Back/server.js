@@ -1349,6 +1349,15 @@ process.on('uncaughtException', (err) => {
 server.on('clientError', (err, socket) => {
   try { socket.end('HTTP/1.1 400 Bad Request\r\n\r\n'); } catch (e) {}
 });
+// Cierre ordenado: las escrituras de NerBot van agrupadas con 250ms de
+// retardo, asi que al parar el proceso hay que volcarlas o se pierde el ultimo
+// mensaje. Railway manda SIGTERM en cada redeploy.
+function cierreOrdenado(senal) {
+  try { if (nerbot.persistLocalAhora) nerbot.persistLocalAhora(); } catch (e) {}
+  setTimeout(() => process.exit(0), 50);
+}
+process.on('SIGTERM', () => cierreOrdenado('SIGTERM'));
+process.on('SIGINT', () => cierreOrdenado('SIGINT'));
 
 async function manejar(req, res) {
   const url = new URL(req.url, 'http://localhost');
