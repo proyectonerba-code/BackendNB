@@ -32,6 +32,7 @@ const GROQ_MODEL = String(process.env.GROQ_MODEL || 'openai/gpt-oss-20b').trim()
 let GROQ_MUERTO = false;
 // Último error de Groq (para el diagnóstico de /api/chatbot/estado).
 let ULTIMO_ERROR_GROQ = '';
+let ULTIMO_ERROR_GEMINI = '';
 // Crudo de la última respuesta de Groq (recortado): para ver qué devuelve
 // cuando la respuesta sale vacía. Solo visible en /api/chatbot/estado.
 let ULTIMO_RAW_GROQ = '';
@@ -861,7 +862,8 @@ async function message({sessionId, user, question, catalog}) {
           });
           return { answer: normalizeAnswer(generated, serverArea, picks), prov: 'gemini' };
         } catch (e) {
-          console.log('NerBot Gemini: ' + e.message);
+          ULTIMO_ERROR_GEMINI = String((e && e.message) || 'error');
+          console.log('NerBot Gemini: ' + ULTIMO_ERROR_GEMINI);
         }
       }
       return { answer: normalizeAnswer({ reply: fallbackReply(cleanQuestion, serverArea, picks, history), area: serverArea, intent: 'fallback', confidence: 0.2, needs_human: true, suggestions: [], product_ids: picks.map((p) => p.id).slice(0, 6) }, serverArea, picks), prov: null };
@@ -952,6 +954,7 @@ module.exports = {
       geminiModelo: MODELO_ACTUAL,
       geminiConfigured: !!API_KEY,
       geminiEnPausa: geminiEnPausa(),
+      ultimoErrorGemini: ULTIMO_ERROR_GEMINI,
       enPausa: enPausa(),
     };
   },
