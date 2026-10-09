@@ -395,11 +395,18 @@ const CACHE = new Map();      // clave -> { out, expira }
 const EN_VUELO = new Map();   // clave -> Promise (una sola llamada por clave)
 const CACHE_TTL_MS = parseInt(process.env.NERBOT_CACHE_MIN || '180', 10) * 60000;
 const CACHE_MAX = parseInt(process.env.NERBOT_CACHE_MAX || '500', 10);
-// Cuando la cuota de Gemini se agota, se deja de llamar un rato en vez de
-// reintentar y empeorar el problema. El chat sigue vivo con cache/fallback.
-let pausaPorCuota = 0;
+// Pausa de cuota POR PROVEEDOR. Cuando Groq se satura (429 del tier gratis)
+// ya no se le llama un rato, PERO Gemini sigue disponible porque su cuota es
+// aparte. Antes había una sola pausa global: en cuanto Groq daba 429 el chat
+// caía al mensaje de "IA saturada" aunque Gemini aún tuviera cupo de sobra, que
+// es justo el síntoma que se veía a ratos sí y a ratos no.
+let pausaGroq = 0;
+let pausaGemini = 0;
 let pausaCuotaSeg = 0;
-function enPausa() { return Date.now() < pausaPorCuota; }
+function groqEnPausa() { return Date.now() < pausaGroq; }
+function geminiEnPausa() { return Date.now() < pausaGemini; }
+// Solo se considera "sin IA" cuando LOS DOS proveedores están en pausa.
+function enPausa() { return groqEnPausa() && geminiEnPausa(); }
 
 function cacheKey(question, area, picks) {
   const q = normalize(question).replace(/[^a-z0-9 ]+/g, '').replace(/\s+/g, ' ').trim();
@@ -604,8 +611,8 @@ async function callGemini({ question, history, catalog, area, picks, user }) {
     if (response.status === 429) {
       const espera = pausaCuotaSeg || 30;
       pausaCuotaSeg = Math.min(300, Math.round(espera * 1.5));
-      pausaPorCuota = Date.now() + espera * 1000;
-      console.log('NerBot: cuota de Gemini agotada. Pausa ' + Math.round((pausaPorCuota - Date.now()) / 1000) + 's; se sirve cache/fallback.');
+      pausaGemini = Date.now() + espera * 1000;
+      console.log('NerBot: cuota de Gemini agotada. Pausa ' + Math.round((pausaGemini - Date.now()) / 1000) + 's; se sirve cache/Groq.');
       throw new Error('Gemini 429: cuota agotada');
     }
 
@@ -692,10 +699,12 @@ async function callGroq({ question, history, catalog, area, picks, user }, reint
     throw new Error('Groq ' + response.status + ': llave o modelo no válido');
   }
   if (response.status === 429) {
-    const espera = pausaCuotaSeg || 30;
-    pausaCuotaSeg = Math.min(300, Math.round(espera * 1.5));
-    pausaPorCuota = Date.now() + espera * 1000;
-    console.log('NerBot: cuota de Groq agotada. Pausa ' + Math.round((pausaPorCuota - Date.now()) / 1000) + 's.');
+    // La cuota gratis de Groq es por minuto y se recupera rápido: 15s bastan y
+    // evitan que el usuario se quede sin IA un minuto entero. Solo se pausa
+    // Groq; Gemini sigue atendiendo mientras tanto.
+    const espera = 15;
+    pausaGroq = Date.now() + espera * 1000;
+    console.log('NerBot: cuota de Groq agotada. Pausa Groq ' + espera + 's; Gemini toma el relevo.');
     throw new Error('Groq 429: cuota agotada');
   }
   if (!response.ok) {
@@ -811,18 +820,19 @@ async function message({sessionId, user, question, catalog}) {
   }
 
   if (!answer && enPausa()) {
-    // Cuota de Gemini agotada: no se llama. Se responde con el texto de
-    // emergencia para que el cliente no espere, y no se gasta nada.
+    // Solo se llega aquí si Groq Y Gemini están en pausa de cuota a la vez.
+    // Se responde con el texto de emergencia para que el cliente no espere.
     answer = normalizeAnswer({ reply: fallbackReply(cleanQuestion, serverArea, picks, history), area: serverArea, intent: 'cuota', confidence: 0.2, needs_human: true, suggestions: [], product_ids: picks.map((p) => p.id).slice(0, 6) }, serverArea, picks);
     source = 'pausa';
   }
 
   if (!answer) {
     // Cadena de proveedores: Groq primero (gratis y rápido) y Gemini después.
-    // Si ambos fallan, el fallback local. Se devuelve empaquetado para saber
-    // de dónde salió la respuesta (source) sin adivinar por el intent.
+    // Cada uno se salta si su propia cuota está en pausa, así cuando Groq se
+    // satura el mensaje lo atiende Gemini sin que el usuario note la falta.
+    // Si ambos fallan, el fallback local.
     const tarea = async () => {
-      if (GROQ_KEY && !GROQ_MUERTO) {
+      if (GROQ_KEY && !GROQ_MUERTO && !groqEnPausa()) {
         try {
           const generated = await callGroq({
             question: cleanQuestion,
@@ -839,20 +849,22 @@ async function message({sessionId, user, question, catalog}) {
           console.log('NerBot Groq: ' + ULTIMO_ERROR_GROQ);
         }
       }
-      try {
-        const generated = await callGemini({
-          question: cleanQuestion,
-          history,
-          catalog: products,
-          area: serverArea,
-          picks,
-          user,
-        });
-        return { answer: normalizeAnswer(generated, serverArea, picks), prov: 'gemini' };
-      } catch (e) {
-        console.log('NerBot Gemini: ' + e.message);
-        return { answer: normalizeAnswer({ reply: fallbackReply(cleanQuestion, serverArea, picks, history), area: serverArea, intent: 'fallback', confidence: 0.2, needs_human: true, suggestions: [], product_ids: picks.map((p) => p.id).slice(0, 6) }, serverArea, picks), prov: null };
+      if (!geminiEnPausa()) {
+        try {
+          const generated = await callGemini({
+            question: cleanQuestion,
+            history,
+            catalog: products,
+            area: serverArea,
+            picks,
+            user,
+          });
+          return { answer: normalizeAnswer(generated, serverArea, picks), prov: 'gemini' };
+        } catch (e) {
+          console.log('NerBot Gemini: ' + e.message);
+        }
       }
+      return { answer: normalizeAnswer({ reply: fallbackReply(cleanQuestion, serverArea, picks, history), area: serverArea, intent: 'fallback', confidence: 0.2, needs_human: true, suggestions: [], product_ids: picks.map((p) => p.id).slice(0, 6) }, serverArea, picks), prov: null };
     };
 
     if (sinHistorial) {
@@ -934,10 +946,12 @@ module.exports = {
       groqConfigured: !!GROQ_KEY,
       groqMuerto: GROQ_MUERTO,
       groqModelo: GROQ_MODEL,
+      groqEnPausa: groqEnPausa(),
       ultimoErrorGroq: ULTIMO_ERROR_GROQ,
       groqRaw: ULTIMO_RAW_GROQ,
       geminiModelo: MODELO_ACTUAL,
       geminiConfigured: !!API_KEY,
+      geminiEnPausa: geminiEnPausa(),
       enPausa: enPausa(),
     };
   },
