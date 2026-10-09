@@ -439,10 +439,12 @@ function geminiEnPausa() { return Date.now() < pausaGemini; }
 // Solo se considera "sin IA" cuando LOS DOS proveedores están en pausa.
 function enPausa() { return groqEnPausa() && geminiEnPausa(); }
 
-function cacheKey(question, area, picks) {
+function cacheKey(question, area, picks, email) {
   const q = normalize(question).replace(/[^a-z0-9 ]+/g, '').replace(/\s+/g, ' ').trim();
   const p = (picks || []).slice(0, 4).map((x) => x.id).join(',');
-  return area + '|' + q + '|' + p;
+  // Por usuario: la respuesta puede incluir su nombre ("Hola Mario"), y sin
+  // esto un cliente vería el saludo personalizado de otro.
+  return area + '|' + q + '|' + p + '|' + String(email || '').toLowerCase();
 }
 function cacheGet(k) {
   const e = CACHE.get(k);
@@ -847,12 +849,11 @@ async function message({sessionId, user, question, catalog}) {
   const picks = chooseCatalog(cleanQuestion, products, serverArea);
   const userMessageId = await saveMessage(sid, email, 'user', cleanQuestion, serverArea);
 
-  // Cache: si la misma pregunta ya se respondio, se reutiliza. Varias personas
-  // preguntando lo mismo no gastan cuota, y eso baja la presion sobre Gemini.
-  // La clave ignora el historial, asi que solo aplica a preguntas autonomousas;
-  // en una conversacion ya avanzada la respuesta cacheada seria incorrecta.
+  // Cache POR USUARIO: la misma pregunta reutiliza respuesta solo dentro de
+  // la misma cuenta (la redacción puede llevar su nombre). Solo aplica a
+  // preguntas autónomas; en conversación avanzada sería incorrecta.
   const conversacionActiva = history.length > 0;
-  const clave = cacheKey(cleanQuestion, serverArea, picks);
+  const clave = cacheKey(cleanQuestion, serverArea, picks, email);
   const sinHistorial = !conversacionActiva;
   let answer = null;
   let source = 'gemini';
