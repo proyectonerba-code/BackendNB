@@ -1781,11 +1781,21 @@ if (pathname === '/api/login' && req.method === 'POST') {
     // si el personal la occulto en su panel, el cliente la sigue viendo, y al
     // reves. El filtro ?email= es solo staff.
     lista = lista.filter((c) => quoteScope(u, c) && quoteVisible(c, u));
-    const emailFiltro = String(url.searchParams.get('email') || '').trim().toLowerCase();
-    if (emailFiltro && (u.rol === 'ADMIN' || u.rol === 'SUPERADMIN')) {
-      lista = lista.filter((c) => c.email && String(c.email).trim().toLowerCase() === emailFiltro);
-    }
-    return sendJSON(res, 200, lista.map((c) => quoteForUser(c, u, { sinFotos: true })));
+  const emailFiltro = String(url.searchParams.get('email') || '').trim().toLowerCase();
+  if (emailFiltro && (u.rol === 'ADMIN' || u.rol === 'SUPERADMIN')) {
+    lista = lista.filter((c) => c.email && String(c.email).trim().toLowerCase() === emailFiltro);
+  }
+  // Paginacion OPCIONAL: sin parametros se devuelve todo, igual que siempre, asi
+  // que el frente actual no cambia. Con ?limit= y ?offset= el panel puede pedir
+  // la lista por partes cuando haya miles de folios (hoy serializa y mapea la
+  // lista completa en cada refresco).
+  const limite = parseInt(url.searchParams.get('limit') || '0', 10);
+  const desde = parseInt(url.searchParams.get('offset') || '0', 10);
+  if (limite > 0) {
+    const inicio = desde > 0 ? desde : 0;
+    return sendJSON(res, 200, lista.slice(inicio, inicio + limite).map((c) => quoteForUser(c, u, { sinFotos: true })));
+  }
+  return sendJSON(res, 200, lista.map((c) => quoteForUser(c, u, { sinFotos: true })));
   }
 
   if (pathname === '/api/cotizaciones/historial' && req.method === 'GET') {
@@ -1826,17 +1836,25 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
   // serie que decide el folio, para que las dos cosas no se contradigan.
   if (area === 'GENERAL' && serie !== 'GENERAL') area = serie;
   let folio = folioSiguiente(serie, year);
-  // Red de seguridad: si el contador se desfaso (carga parcial de datos, restore
+  // Red de seguridad: si el contador se desfasa (carga parcial de datos, restore
   // de un respaldo viejo, dos instancias) el folio nuevo podria ser uno que ya
   // existe, y guardarlo pisaria la cotizacion anterior. Se avanza al siguiente
   // libre de la serie en vez de sobreescribir.
-  if (quotes[folio]) {
+  // La memoria local NO ve lo que creo otra instancia hace dos segundos, asi que
+  // en modo Postgres tambien se pregunta a la base. Un fallo de la consulta no
+  // bloquea la creacion: se sigue con lo que diga la memoria.
+  async function folioOcupado(f) {
+    if (quotes[f]) return true;
+    if (!DB_MODE) return false;
+    try { return !!(await db.get('kv_quotes', f)); } catch (e) { return false; }
+  }
+  if (await folioOcupado(folio)) {
     let n = folioSeqs[serie] || 0;
     let libre = folio;
     do {
       n += 1;
       libre = `COT-${SERIES_FOLIO[serie]}-${String(n).padStart(4, '0')}-${year}`;
-    } while (quotes[libre]);
+    } while (await folioOcupado(libre));
     folioSeqs[serie] = n;
     folio = libre;
     console.log('AVISO: el contador de ' + serie + ' estaba atrasado; el folio se asigno en ' + folio);
@@ -3613,6 +3631,21 @@ async function start() {
   }
   setTimeout(respaldoSeguro, 5 * 60 * 1000).unref();
   setInterval(respaldoSeguro, 6 * 60 * 60 * 1000).unref();
+
+  // Sesiones entre instancias: si alguna vez hay mas de una replica, una sesion
+  // creada en otra no esta en la memoria local y el usuario se quedaba fuera
+  // pese a tener sesion valida. userByToken es sincrono y se usa en un centenar
+  // de sitios, asi que no se toca: en vez de eso se traen las sesiones de la
+  // base cada minuto y se mezclan (solo se agregan/actualizan, nunca se borran
+  // de aqui: la caducidad se comprueba al leer).
+  if (DB_MODE) {
+    setInterval(async function () {
+      try {
+        const r = await db.loadAll('kv_sessions');
+        if (r && typeof r === 'object') Object.assign(sessions, r);
+      } catch (e) {}
+    }, 60000).unref();
+  }
 
   server.listen(PORT, () => {
     console.log('== Grupo NERBA HIDALGO Backend (Node.js) ==');
