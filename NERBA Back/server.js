@@ -2267,6 +2267,30 @@ let area = tipoInmueble === 'Proyecto Especial' ? 'PROYECTOS_ESPECIALES'
     delete users[email];
     for (const t of Object.keys(sessions)) { if (sessions[t] && sessions[t].email.toLowerCase() === email) delete sessions[t]; }
     try { await nerbot.borrarUsuario(email); } catch (e) { console.log('Aviso purga chatbot ' + email + ': ' + e.message); }
+    // Espejo de la baja propia (sin borrar cotizaciones: son expediente del
+    // negocio y el staff las sigue necesitando).
+    try {
+      const mf = path.join(DATA_DIR, 'mantenimiento.json');
+      let lista = [];
+      try { lista = loadJSON(mf, []) || []; } catch (e) {}
+      const filtrada = lista.filter((m) => String(m.email || '').toLowerCase() !== email);
+      if (filtrada.length !== lista.length) {
+        saveJSON(mf, filtrada);
+        if (DB_MODE) {
+          cMant = filtrada;
+          const byId = {};
+          for (const mm of filtrada) byId[mm.id] = mm;
+          db.wt(db.replaceAll('kv_mantenimiento', byId));
+        }
+      }
+    } catch (e) {}
+    try {
+      let cambio = false;
+      for (const k of Object.keys(resets)) {
+        if (String((resets[k] || {}).email || '').toLowerCase() === email) { delete resets[k]; cambio = true; }
+      }
+      if (cambio) persistResets();
+    } catch (e) {}
     persistUsers();
     persistSessions();
     logAudit(req, { modulo: 'usuarios', evento: 'baja', detalle: target.nombre + ' (' + target.rol + ')', usuario: email });
@@ -3571,7 +3595,8 @@ async function start() {
       // Si la DB trae datos, mandan; si está vacía y hay JSON local, se migra solo.
       if (Object.keys(s.users).length) { users = s.users; }
       else if (Object.keys(users).length) { db.wt(db.replaceAll('kv_users', users)); }
-      aplicarSuperadmins('postgres');
+      // La promoción va DESPUÉS de DB_MODE=true (ver abajo): persistUsers solo
+      // escribe a Postgres con el modo activo.
       if (Object.keys(s.sessions).length) { sessions = s.sessions; persistSessions(); }
       else if (Object.keys(sessions).length) { db.wt(db.replaceAll('kv_sessions', sessions)); }
       if (Object.keys(s.quotes).length) {
@@ -3601,6 +3626,7 @@ async function start() {
       }
       DB_MODE = true;
       console.log('Postgres conectado: DB como fuente de verdad.');
+      aplicarSuperadmins('postgres');
     } catch (e) {
       console.log('Aviso PG (' + e.message + '): sigo con JSON local.');
     }
@@ -3642,7 +3668,18 @@ async function start() {
     setInterval(async function () {
       try {
         const r = await db.loadAll('kv_sessions');
-        if (r && typeof r === 'object') Object.assign(sessions, r);
+        if (r && typeof r === 'object') {
+          // Revocación entre réplicas: lo que ya no está en la base (logout o
+          // baja en otra instancia) se borra aquí también. Margen de 120s para
+          // no tumbar sesiones recién creadas aún no escritas en la base.
+          const ahora = Date.now();
+          for (const k of Object.keys(sessions)) {
+            if (r[k]) continue;
+            const exp = Number((sessions[k] || {}).expiresAt || 0);
+            if (exp && (exp - ahora) < (SESSION_TTL_MS - 120000)) delete sessions[k];
+          }
+          Object.assign(sessions, r);
+        }
       } catch (e) {}
     }, 60000).unref();
   }
