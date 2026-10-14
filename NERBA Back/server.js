@@ -44,6 +44,8 @@ const FRONTEND_ORIGINS = FRONTEND_URL
   : [];
 const ORIGENES_PERMITIDOS = FRONTEND_ORIGINS.concat([
   'http://localhost:8080',
+  'https://gruponerba.com',
+  'https://www.gruponerba.com',
   'https://nerbaproyecto.pages.dev',
 ]);
 // Falla seguro. Antes era !== '0', o sea que si la variable NO existia el
@@ -991,7 +993,7 @@ function corsOrigin(req) {
 // el front en local, para no developsar con una seguridad distinta a la de
 // produccion. La lista de origenes sale de lo que el sitio usa de verdad.
 function cspHeader() {
-  const api = String(process.env.API_ORIGIN || 'https://backendnb-production.up.railway.app').replace(/\/$/, '');
+  const api = String(process.env.API_ORIGIN || 'https://api.gruponerba.com').replace(/\/$/, '');
   return [
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://accounts.google.com",
