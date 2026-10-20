@@ -1705,7 +1705,10 @@ if (pathname === '/api/login' && req.method === 'POST') {
       }
       if (body.newPassword) {
         if (problemaDePassword(body.newPassword)) return sendJSON(res, 400, { error: problemaDePassword(body.newPassword) });
-        if (!verifyPassword(body.currentPassword || '', u.passHash)) return sendJSON(res, 401, { error: 'La contrasena actual es incorrecta' });
+        // 403 y no 401: la sesion ESTA vigente, lo que falla es la clave que
+        // escribio. Con 401 el front lo tomaba como "sesion vencida" y sacaba
+        // al usuario de la pagina.
+        if (!verifyPassword(body.currentPassword || '', u.passHash)) return sendJSON(res, 403, { error: 'La contrasena actual es incorrecta' });
         u.passHash = hashPassword(body.newPassword);
       }
       persistUsers(String(u.email || '').toLowerCase());
@@ -1720,11 +1723,12 @@ if (pathname === '/api/login' && req.method === 'POST') {
       const email = String(u.email || '').toLowerCase();
       if (u.passPropia) {
         if (!verifyPassword(body.currentPassword || '', u.passHash)) {
-          return sendJSON(res, 401, { error: 'Confirma tu contraseña actual para eliminar la cuenta.' }, req);
+          // 403 (no 401): la sesion sigue viva, lo que falto es la clave.
+          return sendJSON(res, 403, { error: 'Confirma tu contraseña actual para eliminar la cuenta.' }, req);
         }
       } else {
         if (String(body.email || '').trim().toLowerCase() !== email || !email) {
-          return sendJSON(res, 401, { error: 'Escribe tu correo para confirmar la eliminación.' }, req);
+          return sendJSON(res, 403, { error: 'Escribe tu correo para confirmar la eliminación.' }, req);
         }
       }
       if (u.rol === 'SUPERADMIN' && !Object.values(users).some((x) => x.rol === 'SUPERADMIN' && String(x.email || '').toLowerCase() !== email)) {
